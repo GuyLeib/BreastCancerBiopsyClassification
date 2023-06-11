@@ -1,0 +1,59 @@
+---
+title: "Breast Cancer Biopsy Classification Project"
+subtitle:  "Guy Leib (316311190), Shir Amit Fishbein (207640228), Nadav Klein (318865698)"
+authors: Guy Leib, Shir Amit Fishbein, Nadav Klein
+output: pdf_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r imports, include=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(dplyr) 
+```
+
+<Opening paragraph>
+
+# The Data
+Biopsy features for classification of 569 malignant (cancer) and benign (not cancer) breast masses.
+Features were computationally extracted from digital images of fine needle aspirate biopsy slides.
+## columns description
+In each observation, 10 feature were extracted for every cell in the biopsy (see the list below).
+Our data contain summery of those results and each row in the data contain only the mean, the standard deviation and the worst case among the cells (can be the larger or the most severe, depending the feature).
+overall, the data contains 3*10 features and a label (column Y) that mention wherever the mass is malignant (M) or benign (B).
+*list of the 10 taken features:*
+radius, texture, perimeter, area, smoothness, compactness, concavity, concave points, symmetry, fractal dimension.
+radius: 	Radius of the tumor cells
+texture:	Texture of the tumor cells
+perimeter:	Perimeter of the tumor cells
+area:	Area of the tumor cells
+smoothness:	Smoothness of the tumor cells
+compactness:	Compactness of the tumor cells
+concavity:	Concavity of the tumor cells
+concave_points:	Number of concave portions of the contour of the tumor cells
+symmetry:	Symmetry of the tumor cells
+fractal_dimension:    "Coastline approximation" of the tumor cells
+
+
+
+Upload and examine the data
+```{r examine}
+brca <-read.csv("data//brca.csv")
+# remove the prefix "x." from column names
+colnames(brca) <- gsub("^x\\.", "", colnames(brca))
+head(brca, 3)
+```
+As we see, each observation in the data contains serial number (X), 30 features (all the columns that start with 'x.') and a label (Y). 
+```{r}
+grep("^x\\.", colnames(brca), value = TRUE)
+summary(brca, digits = 2)
+```
+
+
+
+
+
+
+
