@@ -13,6 +13,13 @@ library(ggplot2)
 library(tidyverse)
 library(dplyr) 
 ```
+```{r}
+#install.packages("GGally")
+#install.packages("corrplot")
+library(corrplot)
+library(GGally)
+```
+
 
 <Opening paragraph>
 
@@ -20,10 +27,10 @@ library(dplyr)
 Biopsy features for classification of 569 malignant (cancer) and benign (not cancer) breast masses.
 Features were computationally extracted from digital images of fine needle aspirate biopsy slides.
 ## columns description
-In each observation, 10 feature were extracted for every cell in the biopsy (see the list below).
-Our data contain summery of those results and each row in the data contain only the mean, the standard deviation and the worst case among the cells (can be the larger or the most severe, depending the feature).
+In each observation, 10 attributes were measured for *every cell* in the biopsy (see the list below).
+Our data contain summery of those results and each row in the data contain only the mean, the standard error and the worst case among the cells (can be the larger or the most severe, depending the feature).
 overall, the data contains 3*10 features and a label (column Y) that mention wherever the mass is malignant (M) or benign (B).
-*list of the 10 taken features:*
+*list of the 10 measures:*
 radius, texture, perimeter, area, smoothness, compactness, concavity, concave points, symmetry, fractal dimension.
 radius: 	Radius of the tumor cells
 texture:	Texture of the tumor cells
@@ -37,18 +44,90 @@ symmetry:	Symmetry of the tumor cells
 fractal_dimension:    "Coastline approximation" of the tumor cells
 
 
-
-Upload and examine the data
-```{r examine}
+# Get started
+## Upload and cleaning the data
+```{r load, message=FALSE, warning=FALSE, echo=FALSE}
 brca <-read.csv("data//brca.csv")
+```
+```{r cleaning, include=FALSE}
 # remove the prefix "x." from column names
 colnames(brca) <- gsub("^x\\.", "", colnames(brca))
-head(brca, 3)
+# remove id column
+brca<-brca[,-1]
+# factorize the label
+brca <- brca %>% mutate(y = if_else(y == "B", "Benign", "Malignant"))
+brca$y <- as.factor(brca$y)
 ```
-As we see, each observation in the data contains serial number (X), 30 features (all the columns that start with 'x.') and a label (Y). 
+## Show values range
+```{r examine}
+measures <- c("radius", "texture", "perimeter", "area", "smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
+cat("range of values in the columns: \n")
+for (prefix in measures) {
+  # Find column names that start with the current prefix
+  cat("--------", prefix, "--------\n")
+  prefix.mean <- paste0(prefix, "_mean")
+  prefix.se <- paste0(prefix, "_se")
+  prefix.worst <- paste0(prefix, "_worst")
+
+  # Print the result
+  cat("Mean:\t\t\t", range(brca[[prefix.mean]]), "\n")
+  cat("Standard error:\t\t", range(brca[[prefix.se]]), "\n")
+  cat("Worst:\t\t\t", range(brca[[prefix.worst]]), "\n")}
+```
+## Check for missing data
+```{r nas, message=FALSE, warning=FALSE, echo=FALSE}
+#check Nas
+print(paste("number of NAs in dataset:",sum(is.na(brca))))
+```
+Means we have no missing data.
+
+# Exploratory Data Analysis
+```{r piechart}
+# Create a data frame from the frequency counts
+y.freq <- data.frame(y.names = names(table(brca$y)), count = table(brca$y))
+
+# Create the pie chart using ggplot2
+ggplot(y.freq, aes(x = "", y = count.Freq, fill = y.names)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(fill = "Diagnosis") +
+  theme_void() +
+  geom_text(aes(label = count.Freq), position = position_stack(vjust = 0.5))
+```
 ```{r}
-grep("^x\\.", colnames(brca), value = TRUE)
-summary(brca, digits = 2)
+measures.groups <- c("_mean", "_se", "_worst")
+```
+```{r}
+cor(brca[,-(ncol(brca))] , method = "spearman") %>%
+  corrplot(method = "square", tl.col = "black", tl.srt = 45,
+           sig.level = 0.05)
+```
+```{r}
+# Calculate the correlation matrix
+cor_matrix <- cor(brca[,-(ncol(brca))] , method = "spearman")
+
+# Find column pairs with correlation higher than 0.9
+high_corr_pairs <- which(upper.tri(cor_matrix) & abs(cor_matrix) > 0.8, arr.ind = TRUE)
+
+# Remove one of the columns from each high correlation pair
+to_remove <- c()
+for (i in 1:nrow(high_corr_pairs)) {
+  col1 <- high_corr_pairs[i, 1]
+  col2 <- high_corr_pairs[i, 2]
+  
+  if (!(col1 %in% to_remove)) {
+    to_remove <- c(to_remove, col2)
+  }
+}
+
+# Remove the columns from the brca dataframe
+brca.noncorr <- brca[, -to_remove]
+colnames(brca.noncorr)
+```
+```{r}
+cor(brca.noncorr[,-(ncol(brca.noncorr))] , method = "spearman") %>%
+  corrplot(method = "square", tl.col = "black", tl.srt = 45,
+           sig.level = 0.05)
 ```
 
 
