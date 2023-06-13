@@ -139,56 +139,28 @@ for (prefix in mesures.geom) {
   geo <- append(geo,paste0(prefix, "_se"))
   geo <- append(geo,paste0(prefix, "_worst"))
 }
-brca.subset <- brca[,geo]
-#normalize the data without the classification column
-brca.subset <- as.data.frame(lapply(brca.subset, normalize))
+brca.subset <- brca.x.normal[,geo]
 cor(brca.subset) %>%
 corrplot(method = "square", tl.col = "black", tl.srt = 45,
          sig.level = 0.05)
 ```
 ```{r}
-geom.umap <- umap(brca.subset,
-  n_neighbors = 15,
-  min_dist = 1, spread = 5
-)
-
-geom.umap <- data.frame(
-  UMAP1 = geom.umap[, 1],
-  UMAP2 = geom.umap[, 2],
-  label = brca$diagnosis
-)
-
-ggplot(geom.umap, aes(x = UMAP1, y = UMAP2, col = label)) +
-  geom_point()
-```
-```{r}
-
-geom.tsne <- Rtsne(brca.subset,
-  pca = FALSE, perplexity = 10,
-  theta = 0.0
-)
-
-geom.tsne <- data.frame(
-  TSNE1 = geom.tsne$Y[, 1],
-  TSNE2 = geom.tsne$Y[, 2],
-  label = brca$diagnosis)
-
-ggplot(geom.tsne, aes(
-  x = TSNE1, y = TSNE2,
-  col = label
-)) +
-  geom_point()
-```
-
-```{r}
 pca <- prcomp(brca.subset)
 summary(pca)
+
 pca.plot <- data.frame(
   PC1 = pca$x[, 1],
   PC2 = pca$x[, 2],
   label = brca$diagnosis)
 ggplot(pca.plot, aes(x = PC1, y = PC2, col = label)) +
   geom_point()
+```
+
+```{r}
+brca.reduce <- data.frame(brca[,c('diagnosis')])
+colnames(brca.reduce) <- c("diagnosis")
+brca.reduce$geom_pc1 <- pca$x[,1]
+brca.reduce$geom_pc2 <- pca$x[,2]
 ```
 
 ### supplementary Plots:
@@ -206,32 +178,44 @@ for (prefix in measures) {
 
 
 ```{r}
-brca.reduce <- data.frame(brca[,c('diagnosis')])
-colnames(brca.reduce) <- c("diagnosis")
 for (prefix in measures) {
   # Find column names that start with the current prefix
   prefix.mean <- paste0(prefix, "_mean")
   prefix.se <- paste0(prefix, "_se")
   prefix.worst <- paste0(prefix, "_worst")
-  brca.subset <- brca[,c(prefix.mean, prefix.se, prefix.worst)]
-  cor(brca.subset) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
+  brca.subset <- brca.x.normal[,c(prefix.mean, prefix.se, prefix.worst)]
   cat("--------", prefix, "--------\n")
   pcs <- prcomp(brca.subset)
   cat(prefix, ": PC1 Cumulative Proportion of Variance:", (pcs$sdev[1]^2/sum(pcs$sdev^2)), "\n")
   brca.reduce[[paste0(prefix, "_pc1")]] <- pcs$x[,1]
-  if ((pcs$sdev[1]^2/sum(pcs$sdev^2)) < 0.95) {
+  if ((pcs$sdev[1]^2/sum(pcs$sdev^2)) < 0.5) {
     cat(prefix, ": PC2 Cumulative Proportion of Variance:", (sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))), "\n")
     brca.reduce[[paste0(prefix, "_pc2")]] <- pcs$x[,2]
-     if ((sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))) < 0.95) {
+     if ((sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))) < 0.5) {
       cat(prefix, ": PC3 Cumulative Proportion of Variance:", (sum(pcs$sdev^2/sum(pcs$sdev^2))), "\n")
       brca.reduce[[paste0(prefix, "_pc3")]] <- pcs$x[,3]
       }
   }
 }
 ```
+```{r corr after pca}
+cor(brca.reduce[,!(colnames(brca.reduce) %in% c("diagnosis"))]) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
+```
+```{r corr_triplets}
+brca.pca.cor <- cor(brca.reduce[,!(colnames(brca.reduce) %in% c("diagnosis"))])
+indices <- which(brca.pca.cor > 0.8, arr.ind = TRUE)
+indices.names <- indices
+indices.names[, 1] <- rownames(brca.pca.cor)[indices[, 1]]
+indices.names[, 2] <- colnames(brca.pca.cor)[indices[, 2]]
+
+
+# Print the extracted row and column names
+indices.names[(indices.names[, 1] != indices.names[, 2]),]
+```
 
 ```{r, fig.width = 10}
 cor(brca.x.normal) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
+
 ```
 
 
@@ -330,6 +314,36 @@ cor(brca.noncorr[,-(ncol(brca.noncorr))] , method = "spearman") %>%
   corrplot(method = "square", tl.col = "black", tl.srt = 45,
            sig.level = 0.05)
 ```
+```{r}
+((brca.x$perimeter_mean * brca.x$perimeter_mean) / (brca.x$area_mean )) - brca.x$compactness_mean
+```
+```{r}
+mesures.concavity <- c("compactness", "concavity")
+geo <- c()
+for (prefix in mesures.concavity) {
+  # Find column names that start with the current prefix
+  geo <- append(geo,paste0(prefix, "_mean"))
+  geo <- append(geo,paste0(prefix, "_se"))
+  geo <- append(geo,paste0(prefix, "_worst"))
+}
+brca.subset <- brca.x.normal[,geo]
+#normalize the data without the classification column
+brca.subset <- as.data.frame(lapply(brca.subset, normalize))
+cor(brca.subset) %>%
+corrplot(method = "square", tl.col = "black", tl.srt = 45,
+         sig.level = 0.05)
+pca <- prcomp(brca.subset)
+summary(pca)
+
+pca.plot <- data.frame(
+  PC1 = pca$x[, 1],
+  PC2 = pca$x[, 2],
+  label = brca$diagnosis)
+ggplot(pca.plot, aes(x = PC1, y = PC2, col = label)) +
+  geom_point()
+```
+
+
 
 
 
