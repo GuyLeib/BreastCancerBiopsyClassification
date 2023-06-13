@@ -16,8 +16,11 @@ library(dplyr)
 ```{r}
 #install.packages("GGally")
 #install.packages("corrplot")
+#install.packages("umap")
 library(corrplot)
 library(GGally)
+library(umap)
+library(plotly)
 ```
 
 
@@ -45,46 +48,72 @@ fractal_dimension:    "Coastline approximation" of the tumor cells
 
 
 # Get started
-## Upload and cleaning the data
+## Upload and initial cleaning of the data
 ```{r load, message=FALSE, warning=FALSE, echo=FALSE}
 brca <-read.csv("data//brca.csv")
 ```
-```{r cleaning, include=FALSE}
+```{r cleaning}
 # remove the prefix "x." from column names
 colnames(brca) <- gsub("^x\\.", "", colnames(brca))
+colnames(brca)[which(names(brca) == "y")] <- "diagnosis"
 # remove id column
 brca<-brca[,-1]
 # factorize the label
-brca <- brca %>% mutate(y = if_else(y == "B", "Benign", "Malignant"))
-brca$y <- as.factor(brca$y)
+brca <- brca %>% mutate(diagnosis = if_else(diagnosis == "B", "Benign", "Malignant"))
+brca$diagnosis <- as.factor(brca$diagnosis)
+brca.x <- brca[,!(colnames(brca) %in% c("diagnosis"))]
+colnames(brca)
 ```
 ## Show values range
 ```{r examine}
 measures <- c("radius", "texture", "perimeter", "area", "smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
-cat("range of values in the columns: \n")
+cat("Range of values in the numerical columns: \n")
 for (prefix in measures) {
   # Find column names that start with the current prefix
-  cat("--------", prefix, "--------\n")
+  cat("-------", prefix, "-------\n")
+  cat("\t\t\t min:\t\t max:\t\t mean:\n")
   prefix.mean <- paste0(prefix, "_mean")
   prefix.se <- paste0(prefix, "_se")
   prefix.worst <- paste0(prefix, "_worst")
 
   # Print the result
-  cat("Mean:\t\t\t", range(brca[[prefix.mean]]), "\n")
-  cat("Standard error:\t\t", range(brca[[prefix.se]]), "\n")
-  cat("Worst:\t\t\t", range(brca[[prefix.worst]]), "\n")}
+  cat("Mean:\t\t\t", round(min(brca[[prefix.mean]]), 2), "\t\t" , round(max(brca[[prefix.mean]]), 2), "\t\t", round(mean(brca[[prefix.mean]]) ,2), "\n")
+  cat("Standard error:\t\t", round(min(brca[[prefix.se]]), 2), "\t\t" , round(max(brca[[prefix.se]]), 2), "\t\t", round(mean(brca[[prefix.se]]) ,2), "\n")
+  cat("Worst:\t\t\t", round(min(brca[[prefix.worst]]), 2), "\t\t" , round(max(brca[[prefix.worst]]), 2), "\t\t", round(mean(brca[[prefix.worst]]) ,2), "\n")
+}
+cat("\n\nnumber of NAs in dataset: ",sum(is.na(brca)))
 ```
-## Check for missing data
-```{r nas, message=FALSE, warning=FALSE, echo=FALSE}
-#check Nas
-print(paste("number of NAs in dataset:",sum(is.na(brca))))
+
+Above we see the ranges of the values in our data and that there are no missing values.
+# Data cleaning
+## Normalization
+Because we have different ranges and we don't want that the scale of the feature will be a factor during the study we would like to normalize each column to values between 0 and 1 by preforming Min-Max normalization
+```{r norm}
+minmax <- function(x) {
+return ((x - min(x)) / (max(x) - min(x)))
+}
+brca.x.normal <- as.data.frame(lapply(brca.x, minmax))
 ```
-Means we have no missing data.
+```{r show norm range}
+for (prefix in measures) {
+  # Find column names that start with the current prefix
+  cat("-------", prefix, "-------\n")
+  cat("\t\t\t min:\t\t max:\t\t mean:\n")
+  prefix.mean <- paste0(prefix, "_mean")
+  prefix.se <- paste0(prefix, "_se")
+  prefix.worst <- paste0(prefix, "_worst")
+
+  # Print the result
+  cat("Mean:\t\t\t", round(min(brca.x.normal[[prefix.mean]]), 2), "\t\t" , round(max(brca.x.normal[[prefix.mean]]), 2), "\t\t", round(mean(brca.x.normal[[prefix.mean]]) ,2), "\n")
+  cat("Standard error:\t\t", round(min(brca.x.normal[[prefix.se]]), 2), "\t\t" , round(max(brca.x.normal[[prefix.se]]), 2), "\t\t", round(mean(brca.x.normal[[prefix.se]]) ,2), "\n")
+  cat("Worst:\t\t\t", round(min(brca.x.normal[[prefix.worst]]), 2), "\t\t" , round(max(brca.x.normal[[prefix.worst]]), 2), "\t\t", round(mean(brca.x.normal[[prefix.worst]]) ,2), "\n")
+}
+```
 
 # Exploratory Data Analysis
 ```{r piechart}
 # Create a data frame from the frequency counts
-y.freq <- data.frame(y.names = names(table(brca$y)), count = table(brca$y))
+y.freq <- data.frame(y.names = names(table(brca$diagnosis)), count = table(brca$diagnosis))
 
 # Create the pie chart using ggplot2
 ggplot(y.freq, aes(x = "", y = count.Freq, fill = y.names)) +
@@ -94,11 +123,183 @@ ggplot(y.freq, aes(x = "", y = count.Freq, fill = y.names)) +
   theme_void() +
   geom_text(aes(label = count.Freq), position = position_stack(vjust = 0.5))
 ```
+# Feture selection 
+Because the nature of our data, having 3 aspects of every feature, there might be biases while applying VM models using all the features, where there can be duplicates in the trends between then (e.g correlation trend between ). moreover, the "worst" columns are often in correlation with the "mean" and the "se" of the same measure. [see supplement]
+To overcome this, we apply PCA on each triplet of "mean", "se" and "worst" and create new data-frame with columns of the PCs (until 95% contribution of variables) instead of the whole triplets.
+In addition, even between the different measures, we can find duplicates:
+The radius of a cell has strong correlation to it's perimeter and area.
+here we see correlation matrix of those features:
+```{r}
+mesures.geom <- c("radius", "perimeter", "area")
+measures <- c("texture","smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
+geo <- c()
+for (prefix in mesures.geom) {
+  # Find column names that start with the current prefix
+  geo <- append(geo,paste0(prefix, "_mean"))
+  geo <- append(geo,paste0(prefix, "_se"))
+  geo <- append(geo,paste0(prefix, "_worst"))
+}
+brca.subset <- brca[,geo]
+#normalize the data without the classification column
+brca.subset <- as.data.frame(lapply(brca.subset, normalize))
+cor(brca.subset) %>%
+corrplot(method = "square", tl.col = "black", tl.srt = 45,
+         sig.level = 0.05)
+```
+```{r}
+geom.umap <- umap(brca.subset,
+  n_neighbors = 15,
+  min_dist = 1, spread = 5
+)
+
+geom.umap <- data.frame(
+  UMAP1 = geom.umap[, 1],
+  UMAP2 = geom.umap[, 2],
+  label = brca$diagnosis
+)
+
+ggplot(geom.umap, aes(x = UMAP1, y = UMAP2, col = label)) +
+  geom_point()
+```
+```{r}
+
+geom.tsne <- Rtsne(brca.subset,
+  pca = FALSE, perplexity = 10,
+  theta = 0.0
+)
+
+geom.tsne <- data.frame(
+  TSNE1 = geom.tsne$Y[, 1],
+  TSNE2 = geom.tsne$Y[, 2],
+  label = brca$diagnosis)
+
+ggplot(geom.tsne, aes(
+  x = TSNE1, y = TSNE2,
+  col = label
+)) +
+  geom_point()
+```
+
+```{r}
+pca <- prcomp(brca.subset)
+summary(pca)
+pca.plot <- data.frame(
+  PC1 = pca$x[, 1],
+  PC2 = pca$x[, 2],
+  label = brca$diagnosis)
+ggplot(pca.plot, aes(x = PC1, y = PC2, col = label)) +
+  geom_point()
+```
+
+### supplementary Plots:
+correlation between triplets of "mean", "se" and "worst".
+```{r corr_triplets}
+for (prefix in measures) {
+  # Find column names that start with the current prefix
+  prefix.mean <- paste0(prefix, "_mean")
+  prefix.se <- paste0(prefix, "_se")
+  prefix.worst <- paste0(prefix, "_worst")
+  brca.subset <- brca[,c(prefix.mean, prefix.se, prefix.worst)]
+  cor(brca.subset) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
+}
+```
+
+
+```{r}
+brca.reduce <- data.frame(brca[,c('diagnosis')])
+colnames(brca.reduce) <- c("diagnosis")
+for (prefix in measures) {
+  # Find column names that start with the current prefix
+  prefix.mean <- paste0(prefix, "_mean")
+  prefix.se <- paste0(prefix, "_se")
+  prefix.worst <- paste0(prefix, "_worst")
+  brca.subset <- brca[,c(prefix.mean, prefix.se, prefix.worst)]
+  cor(brca.subset) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
+  cat("--------", prefix, "--------\n")
+  pcs <- prcomp(brca.subset)
+  cat(prefix, ": PC1 Cumulative Proportion of Variance:", (pcs$sdev[1]^2/sum(pcs$sdev^2)), "\n")
+  brca.reduce[[paste0(prefix, "_pc1")]] <- pcs$x[,1]
+  if ((pcs$sdev[1]^2/sum(pcs$sdev^2)) < 0.95) {
+    cat(prefix, ": PC2 Cumulative Proportion of Variance:", (sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))), "\n")
+    brca.reduce[[paste0(prefix, "_pc2")]] <- pcs$x[,2]
+     if ((sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))) < 0.95) {
+      cat(prefix, ": PC3 Cumulative Proportion of Variance:", (sum(pcs$sdev^2/sum(pcs$sdev^2))), "\n")
+      brca.reduce[[paste0(prefix, "_pc3")]] <- pcs$x[,3]
+      }
+  }
+}
+```
+
+```{r, fig.width = 10}
+cor(brca.x.normal) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
+```
+
+
+```{r}
+mesures.geom <- c("radius", "perimeter", "area")
+measures <- c("texture","smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
+# create the min/max normalization function:
+
+brca.pca <- data.frame(brca[,c('y')])
+colnames(brca.pca) <- c("y")
+for (prefix in measures) {
+  # Find column names that start with the current prefix
+  prefix.mean <- paste0(prefix, "_mean")
+  prefix.se <- paste0(prefix, "_se")
+  prefix.worst <- paste0(prefix, "_worst")
+  brca.subset <- brca[,c(prefix.mean, prefix.se, prefix.worst)]
+  #normalize the data without the classification column
+  brca.subset <- as.data.frame(lapply(brca.subset, minmax))
+  cor(brca.subset) %>%
+  corrplot(method = "square", tl.col = "black", tl.srt = 45,
+           sig.level = 0.05)
+  cat("--------", prefix, "--------\n")
+  pcs <- prcomp(brca.subset)
+  cat(prefix, ": PC1 Cumulative Proportion of Variance:", (pcs$sdev[1]^2/sum(pcs$sdev^2)), "\n")
+  brca.pca[[paste0(prefix, "_pc1")]] <- pcs$x[,1]
+  if ((pcs$sdev[1]^2/sum(pcs$sdev^2)) < 0.95) {
+    cat(prefix, ": PC2 Cumulative Proportion of Variance:", (sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))), "\n")
+    brca.pca[[paste0(prefix, "_pc2")]] <- pcs$x[,2]
+     if ((sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))) < 0.95) {
+      cat(prefix, ": PC3 Cumulative Proportion of Variance:", (sum(pcs$sdev^2/sum(pcs$sdev^2))), "\n")
+      brca.pca[[paste0(prefix, "_pc3")]] <- pcs$x[,3]
+      }
+  }
+}
+```
+
+
+```{r}
+measures <- c("radius", "perimeter", "area")
+# create the min/max normalization function:
+normalize <- function(x) {
+return ((x - min(x)) / (max(x) - min(x)))
+}
+brca.pca <- data.frame(brca[,c('y')])
+colnames(brca.pca) <- c("y")
+```
+```{r}
+brca.pca.cor <- cor(brca.pca[,!(colnames(brca.pca) %in% c("y"))]) > 0.9
+cor(brca.pca[,!(colnames(brca.pca) %in% c("y"))]) %>%
+  corrplot(method = "square", tl.col = "black", tl.srt = 45,
+           sig.level = 0.05)
+# Extract row and column names based on condition
+indices <- which(abs(brca.pca.cor) > 0.9, arr.ind = TRUE)
+indices.names <- indices
+indices.names[, 1] <- rownames(brca.pca.cor)[indices[, 1]]
+indices.names[, 2] <- colnames(brca.pca.cor)[indices[, 2]]
+
+
+# Print the extracted row and column names
+indices.names[(indices.names[, 1] != indices.names[, 2]),]
+```
+
+
 ```{r}
 measures.groups <- c("_mean", "_se", "_worst")
 ```
 ```{r}
-cor(brca[,-(ncol(brca))] , method = "spearman") %>%
+cor(brca[,!(colnames(brca) %in% c("y"))] , method = "spearman") %>%
   corrplot(method = "square", tl.col = "black", tl.srt = 45,
            sig.level = 0.05)
 ```
