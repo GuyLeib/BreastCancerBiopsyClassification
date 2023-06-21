@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r imports, include=FALSE}
 library(ggplot2)
 library(tidyverse)
+library(patchwork)
 library(dplyr) 
 ```
 ```{r}
@@ -35,16 +36,16 @@ Our data contain summery of those results and each row in the data contain only 
 overall, the data contains 3*10 features and a label (column Y) that mention wherever the mass is malignant (M) or benign (B).
 *list of the 10 measures:*
 radius, texture, perimeter, area, smoothness, compactness, concavity, concave points, symmetry, fractal dimension.
-radius: 	Radius of the tumor cells
-texture:	Texture of the tumor cells
-perimeter:	Perimeter of the tumor cells
-area:	Area of the tumor cells
-smoothness:	Smoothness of the tumor cells
-compactness:	Compactness of the tumor cells
-concavity:	Concavity of the tumor cells
-concave_points:	Number of concave portions of the contour of the tumor cells
-symmetry:	Symmetry of the tumor cells
-fractal_dimension:    "Coastline approximation" of the tumor cells
+radius: 	Nucleus radius (mean of distances from center to points on perimeter).
+texture:	 Nucleus texture (standard deviation of grayscale values).
+perimeter:	Nucleus perimeter.
+area:	Nucleus area.
+smoothness:	Smoothness of the tumor cells.
+compactness:	 Nucleus compactness (perimeter^2/area - 1).
+concavity:	Nucleus concavity (severity of concave portions of the contour).
+concave_points:	Number of concave portions of the nucleus contour.
+symmetry:	Nucleus Symmetry.
+fractal_dimension: Nucleus fractal dimension ("coastline approximation" -1).
 
 
 # Get started
@@ -111,6 +112,8 @@ for (prefix in measures) {
 ```
 
 # Exploratory Data Analysis
+## Balance
+First, we want to see if the labels are balanced:
 ```{r piechart}
 # Create a data frame from the frequency counts
 y.freq <- data.frame(y.names = names(table(brca$diagnosis)), count = table(brca$diagnosis))
@@ -123,44 +126,93 @@ ggplot(y.freq, aes(x = "", y = count.Freq, fill = y.names)) +
   theme_void() +
   geom_text(aes(label = count.Freq), position = position_stack(vjust = 0.5))
 ```
-# Feture selection 
+We can see that the data doesn't contain significant bias toward one of the labels.
+it is possible that it could effect on the results but as for now, we don't think it is necessary to change something.
+
+## distributions differences
+We want to explore if we can see visually how the measures are related to the diagnosis,
+we create box plots to each aspect of each measure for both labels - Benign and Malignant.
+```{r mean plot}
+box_df <- as_tibble(brca.x.normal) %>%
+  select(ends_with("_mean")) %>%
+  rename_all(~ str_replace_all(., "_mean", "")) %>%
+  mutate(brca["diagnosis"]) %>%
+  pivot_longer(col = -diagnosis, names_to = "features", values_to = "value")
+p.mean <- ggplot(box_df,
+       aes(factor(features,levels = measures),
+           value, fill = diagnosis)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("#75c731", "#0488cf")) +
+  labs(x = "explanatory variables", y = "standardized value") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(size = 7))
+p.mean + plot_annotation(title = "Mean values distribution")
+```
+```{r se plot}
+box_df <- as_tibble(brca.x.normal) %>%
+  select(ends_with("_se")) %>%
+  rename_all(~ str_replace_all(., "_se", "")) %>%
+  mutate(brca["diagnosis"]) %>%
+  pivot_longer(col = -diagnosis, names_to = "features", values_to = "value")
+p.mean <- ggplot(box_df,
+       aes(factor(features,levels = measures),
+           value, fill = diagnosis)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("#75c731", "#0488cf")) +
+  labs(x = "explanatory variables", y = "standardized value") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(size = 7))
+p.mean + plot_annotation(title = "Standard error values distribution")
+```
+```{r worst plot}
+box_df <- as_tibble(brca.x.normal) %>%
+  select(ends_with("_worst")) %>%
+  rename_all(~ str_replace_all(., "_worst", "")) %>%
+  mutate(brca["diagnosis"]) %>%
+  pivot_longer(col = -diagnosis, names_to = "features", values_to = "value")
+p.mean <- ggplot(box_df,
+       aes(factor(features,levels = measures),
+           value, fill = diagnosis)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("#75c731", "#0488cf")) +
+  labs(x = "explanatory variables", y = "standardized value") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(size = 7))
+p.mean + plot_annotation(title = "Worst values distribution")
+```
+
+
+
+# Feture selection
 Because the nature of our data, having 3 aspects of every feature, there might be biases while applying VM models using all the features, where there can be duplicates in the trends between then (e.g correlation trend between ). moreover, the "worst" columns are often in correlation with the "mean" and the "se" of the same measure. [see supplement]
 To overcome this, we apply PCA on each triplet of "mean", "se" and "worst" and create new data-frame with columns of the PCs (until 95% contribution of variables) instead of the whole triplets.
 In addition, even between the different measures, we can find duplicates:
 The radius of a cell has strong correlation to it's perimeter and area.
 here we see correlation matrix of those features:
 ```{r}
-mesures.geom <- c("radius", "perimeter", "area")
+mesures.shape <- c("radius", "perimeter", "area")
 measures <- c("texture","smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
-geo <- c()
-for (prefix in mesures.geom) {
+shape <- c()
+for (prefix in mesures.shape) {
   # Find column names that start with the current prefix
-  geo <- append(geo,paste0(prefix, "_mean"))
-  geo <- append(geo,paste0(prefix, "_se"))
-  geo <- append(geo,paste0(prefix, "_worst"))
+  shape <- append(shape,paste0(prefix, "_mean"))
+  shape <- append(shape,paste0(prefix, "_se"))
+  shape <- append(shape,paste0(prefix, "_worst"))
 }
-brca.subset <- brca.x.normal[,geo]
+brca.subset <- brca.x.normal[,shape]
 cor(brca.subset) %>%
 corrplot(method = "square", tl.col = "black", tl.srt = 45,
          sig.level = 0.05)
-```
-```{r}
-pca <- prcomp(brca.subset)
-summary(pca)
-
-pca.plot <- data.frame(
-  PC1 = pca$x[, 1],
-  PC2 = pca$x[, 2],
-  label = brca$diagnosis)
-ggplot(pca.plot, aes(x = PC1, y = PC2, col = label)) +
-  geom_point()
 ```
 
 ```{r}
 brca.reduce <- data.frame(brca[,c('diagnosis')])
 colnames(brca.reduce) <- c("diagnosis")
-brca.reduce$geom_pc1 <- pca$x[,1]
-brca.reduce$geom_pc2 <- pca$x[,2]
+brca.reduce$shape_pc1 <- pca$x[,1]
+brca.reduce$shape_pc2 <- pca$x[,2]
+```
+```{r}
+cor(brca.reduce) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
 ```
 
 ### supplementary Plots:
@@ -171,7 +223,7 @@ for (prefix in measures) {
   prefix.mean <- paste0(prefix, "_mean")
   prefix.se <- paste0(prefix, "_se")
   prefix.worst <- paste0(prefix, "_worst")
-  brca.subset <- brca[,c(prefix.mean, prefix.se, prefix.worst)]
+  brca.subset <- brca.x.normal[,c(prefix.mean, prefix.se, prefix.worst)]
   cor(brca.subset) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
 }
 ```
@@ -188,162 +240,31 @@ for (prefix in measures) {
   pcs <- prcomp(brca.subset)
   cat(prefix, ": PC1 Cumulative Proportion of Variance:", (pcs$sdev[1]^2/sum(pcs$sdev^2)), "\n")
   brca.reduce[[paste0(prefix, "_pc1")]] <- pcs$x[,1]
-  if ((pcs$sdev[1]^2/sum(pcs$sdev^2)) < 0.5) {
+  if ((pcs$sdev[1]^2/sum(pcs$sdev^2)) < 0.9) {
     cat(prefix, ": PC2 Cumulative Proportion of Variance:", (sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))), "\n")
     brca.reduce[[paste0(prefix, "_pc2")]] <- pcs$x[,2]
-     if ((sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))) < 0.5) {
+     if ((sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))) < 0.9) {
       cat(prefix, ": PC3 Cumulative Proportion of Variance:", (sum(pcs$sdev^2/sum(pcs$sdev^2))), "\n")
       brca.reduce[[paste0(prefix, "_pc3")]] <- pcs$x[,3]
       }
   }
 }
+brca.x.reduce <- brca.reduce[,!(colnames(brca.reduce) %in% c("diagnosis"))]
 ```
 ```{r corr after pca}
-cor(brca.reduce[,!(colnames(brca.reduce) %in% c("diagnosis"))]) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
+cor(brca.x.reduce) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
 ```
-```{r corr_triplets}
-brca.pca.cor <- cor(brca.reduce[,!(colnames(brca.reduce) %in% c("diagnosis"))])
-indices <- which(brca.pca.cor > 0.8, arr.ind = TRUE)
-indices.names <- indices
-indices.names[, 1] <- rownames(brca.pca.cor)[indices[, 1]]
-indices.names[, 2] <- colnames(brca.pca.cor)[indices[, 2]]
-
-
-# Print the extracted row and column names
-indices.names[(indices.names[, 1] != indices.names[, 2]),]
-```
-
-```{r, fig.width = 10}
+```{r corr before pca}
 cor(brca.x.normal) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
-
 ```
 
-
-```{r}
-mesures.geom <- c("radius", "perimeter", "area")
-measures <- c("texture","smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
-# create the min/max normalization function:
-
-brca.pca <- data.frame(brca[,c('y')])
-colnames(brca.pca) <- c("y")
-for (prefix in measures) {
-  # Find column names that start with the current prefix
-  prefix.mean <- paste0(prefix, "_mean")
-  prefix.se <- paste0(prefix, "_se")
-  prefix.worst <- paste0(prefix, "_worst")
-  brca.subset <- brca[,c(prefix.mean, prefix.se, prefix.worst)]
-  #normalize the data without the classification column
-  brca.subset <- as.data.frame(lapply(brca.subset, minmax))
-  cor(brca.subset) %>%
-  corrplot(method = "square", tl.col = "black", tl.srt = 45,
-           sig.level = 0.05)
-  cat("--------", prefix, "--------\n")
-  pcs <- prcomp(brca.subset)
-  cat(prefix, ": PC1 Cumulative Proportion of Variance:", (pcs$sdev[1]^2/sum(pcs$sdev^2)), "\n")
-  brca.pca[[paste0(prefix, "_pc1")]] <- pcs$x[,1]
-  if ((pcs$sdev[1]^2/sum(pcs$sdev^2)) < 0.95) {
-    cat(prefix, ": PC2 Cumulative Proportion of Variance:", (sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))), "\n")
-    brca.pca[[paste0(prefix, "_pc2")]] <- pcs$x[,2]
-     if ((sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))) < 0.95) {
-      cat(prefix, ": PC3 Cumulative Proportion of Variance:", (sum(pcs$sdev^2/sum(pcs$sdev^2))), "\n")
-      brca.pca[[paste0(prefix, "_pc3")]] <- pcs$x[,3]
-      }
-  }
-}
-```
-
-
-```{r}
-measures <- c("radius", "perimeter", "area")
-# create the min/max normalization function:
-normalize <- function(x) {
-return ((x - min(x)) / (max(x) - min(x)))
-}
-brca.pca <- data.frame(brca[,c('y')])
-colnames(brca.pca) <- c("y")
-```
-```{r}
-brca.pca.cor <- cor(brca.pca[,!(colnames(brca.pca) %in% c("y"))]) > 0.9
-cor(brca.pca[,!(colnames(brca.pca) %in% c("y"))]) %>%
-  corrplot(method = "square", tl.col = "black", tl.srt = 45,
-           sig.level = 0.05)
-# Extract row and column names based on condition
-indices <- which(abs(brca.pca.cor) > 0.9, arr.ind = TRUE)
-indices.names <- indices
-indices.names[, 1] <- rownames(brca.pca.cor)[indices[, 1]]
-indices.names[, 2] <- colnames(brca.pca.cor)[indices[, 2]]
-
-
-# Print the extracted row and column names
-indices.names[(indices.names[, 1] != indices.names[, 2]),]
-```
-
-
-```{r}
-measures.groups <- c("_mean", "_se", "_worst")
-```
-```{r}
-cor(brca[,!(colnames(brca) %in% c("y"))] , method = "spearman") %>%
-  corrplot(method = "square", tl.col = "black", tl.srt = 45,
-           sig.level = 0.05)
-```
-```{r}
-# Calculate the correlation matrix
-cor_matrix <- cor(brca[,-(ncol(brca))] , method = "spearman")
-
-# Find column pairs with correlation higher than 0.9
-high_corr_pairs <- which(upper.tri(cor_matrix) & abs(cor_matrix) > 0.8, arr.ind = TRUE)
-
-# Remove one of the columns from each high correlation pair
-to_remove <- c()
-for (i in 1:nrow(high_corr_pairs)) {
-  col1 <- high_corr_pairs[i, 1]
-  col2 <- high_corr_pairs[i, 2]
-  
-  if (!(col1 %in% to_remove)) {
-    to_remove <- c(to_remove, col2)
-  }
-}
-
-# Remove the columns from the brca dataframe
-brca.noncorr <- brca[, -to_remove]
-colnames(brca.noncorr)
-```
-```{r}
-cor(brca.noncorr[,-(ncol(brca.noncorr))] , method = "spearman") %>%
-  corrplot(method = "square", tl.col = "black", tl.srt = 45,
-           sig.level = 0.05)
-```
-```{r}
-((brca.x$perimeter_mean * brca.x$perimeter_mean) / (brca.x$area_mean )) - brca.x$compactness_mean
-```
-```{r}
-mesures.concavity <- c("compactness", "concavity")
-geo <- c()
-for (prefix in mesures.concavity) {
-  # Find column names that start with the current prefix
-  geo <- append(geo,paste0(prefix, "_mean"))
-  geo <- append(geo,paste0(prefix, "_se"))
-  geo <- append(geo,paste0(prefix, "_worst"))
-}
-brca.subset <- brca.x.normal[,geo]
-#normalize the data without the classification column
-brca.subset <- as.data.frame(lapply(brca.subset, normalize))
-cor(brca.subset) %>%
-corrplot(method = "square", tl.col = "black", tl.srt = 45,
-         sig.level = 0.05)
-pca <- prcomp(brca.subset)
-summary(pca)
-
-pca.plot <- data.frame(
-  PC1 = pca$x[, 1],
-  PC2 = pca$x[, 2],
-  label = brca$diagnosis)
-ggplot(pca.plot, aes(x = PC1, y = PC2, col = label)) +
-  geom_point()
-```
-
-
+For Guy and Shir:
+the variable brca contains the whole dataframe in the raw shape
+the variable brca.x contains only the numerical features (no diagnosis)
+brca.x.normal is brca after min-max normalization
+brca.reduce and brca.x.reduce are the dataframes after dimantionality reduction
+pls try every ML algorithm on both brca (or brca.x.normal if you want it noramlized) and brca.reduce
+afterward we will see if the dimentionality reduction did helped.
 
 
 
