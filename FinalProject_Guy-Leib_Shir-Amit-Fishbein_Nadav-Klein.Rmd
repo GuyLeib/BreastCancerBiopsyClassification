@@ -17,10 +17,8 @@ library(dplyr)
 ```{r}
 #install.packages("GGally")
 #install.packages("corrplot")
-#install.packages("umap")
 library(corrplot)
 library(GGally)
-library(umap)
 library(plotly)
 ```
 
@@ -50,6 +48,7 @@ fractal_dimension: Nucleus fractal dimension ("coastline approximation" -1).
 
 # Get started
 ## Upload and initial cleaning of the data
+We are first changing the names of the columns and the labels from 'M' and 'B' to 'Malignant' and 'Benign'.
 ```{r load, message=FALSE, warning=FALSE, echo=FALSE}
 brca <-read.csv("data//brca.csv")
 ```
@@ -66,6 +65,7 @@ brca.x <- brca[,!(colnames(brca) %in% c("diagnosis"))]
 colnames(brca)
 ```
 ## Show values range
+Afterward, to examine our data, we want to see the ranges of the values within each column
 ```{r examine}
 measures <- c("radius", "texture", "perimeter", "area", "smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
 cat("Range of values in the numerical columns: \n")
@@ -85,7 +85,7 @@ for (prefix in measures) {
 cat("\n\nnumber of NAs in dataset: ",sum(is.na(brca)))
 ```
 
-Above we see the ranges of the values in our data and that there are no missing values.
+Above we see the ranges of the values in our data and that there are no missing values. all the features are numeric.
 # Data cleaning
 ## Normalization
 Because we have different ranges and we don't want that the scale of the feature will be a factor during the study we would like to normalize each column to values between 0 and 1 by preforming Min-Max normalization
@@ -114,20 +114,26 @@ for (prefix in measures) {
 # Exploratory Data Analysis
 ## Balance
 First, we want to see if the labels are balanced:
-```{r piechart}
-# Create a data frame from the frequency counts
-y.freq <- data.frame(y.names = names(table(brca$diagnosis)), count = table(brca$diagnosis))
+```{r}
+df <- brca["diagnosis"] %>% 
+  group_by(diagnosis) %>%
+  count() %>% 
+  ungroup() %>% 
+  mutate(perc = `n` / sum(`n`)) %>% 
+  arrange(perc) %>%
+  mutate(labels = scales::percent(perc))
 
-# Create the pie chart using ggplot2
-ggplot(y.freq, aes(x = "", y = count.Freq, fill = y.names)) +
-  geom_bar(stat = "identity", width = 1) +
-  coord_polar("y", start = 0) +
-  labs(fill = "Diagnosis") +
-  theme_void() +
-  geom_text(aes(label = count.Freq), position = position_stack(vjust = 0.5))
+ggplot(df, aes(x = "", y = perc, fill = diagnosis)) +
+  geom_col() +
+  geom_label(aes(label = labels),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+  coord_polar(theta = "y")
 ```
 We can see that the data doesn't contain significant bias toward one of the labels.
-it is possible that it could effect on the results but as for now, we don't think it is necessary to change something.
+it is possible that it could effect on the results but from the other hand we don't want to lose data that can be significant.
+therefore, considering that the bias is not very large, we decided to not make changes.
 
 ## distributions differences
 We want to explore if we can see visually how the measures are related to the diagnosis,
@@ -143,7 +149,7 @@ p.mean <- ggplot(box_df,
            value, fill = diagnosis)) +
   geom_boxplot() +
   scale_fill_manual(values = c("#75c731", "#0488cf")) +
-  labs(x = "explanatory variables", y = "standardized value") +
+  labs(x = "Feature (mean)", y = "Standardized value") +
   theme_minimal(base_size = 12) +
   theme(axis.text.x = element_text(size = 7))
 p.mean + plot_annotation(title = "Mean values distribution")
@@ -159,7 +165,7 @@ p.mean <- ggplot(box_df,
            value, fill = diagnosis)) +
   geom_boxplot() +
   scale_fill_manual(values = c("#75c731", "#0488cf")) +
-  labs(x = "explanatory variables", y = "standardized value") +
+  labs(x = "Feature (standard error)", y = "standardized value") +
   theme_minimal(base_size = 12) +
   theme(axis.text.x = element_text(size = 7))
 p.mean + plot_annotation(title = "Standard error values distribution")
@@ -175,21 +181,31 @@ p.mean <- ggplot(box_df,
            value, fill = diagnosis)) +
   geom_boxplot() +
   scale_fill_manual(values = c("#75c731", "#0488cf")) +
-  labs(x = "explanatory variables", y = "standardized value") +
+  labs(x = "Feature (worst)", y = "standardized value") +
   theme_minimal(base_size = 12) +
   theme(axis.text.x = element_text(size = 7))
 p.mean + plot_annotation(title = "Worst values distribution")
 ```
-
+We see from the plots that the features are indeed related to the diagnosis, but that a single feature cannot predict the label alone.
+Our challenge during this work will be to combine the features in a way that will give the best prediction.
 
 
 # Feture selection
-Because the nature of our data, having 3 aspects of every feature, there might be biases while applying VM models using all the features, where there can be duplicates in the trends between then (e.g correlation trend between ). moreover, the "worst" columns are often in correlation with the "mean" and the "se" of the same measure. [see supplement]
+Because the nature of our data, having 3 aspects of every feature, there might be biases while applying VM models using all the features, where there can be duplicates in the trends between them.
+moreover, the "worst" columns are often in correlation with the "mean" and the "se" of the same measure. [see supplement figures]
 To overcome this, we apply PCA on each triplet of "mean", "se" and "worst" and create new data-frame with columns of the PCs (until 95% contribution of variables) instead of the whole triplets.
 In addition, even between the different measures, we can find duplicates:
-The radius of a cell has strong correlation to it's perimeter and area.
-here we see correlation matrix of those features:
-```{r}
+The radius of a cell has strong correlation to it's perimeter and area [also in the supplement figures].
+To present our claim here is the correlations between all the features:
+```{r corr before pca}
+corrs <- cor(brca.x.normal)
+colnames(corrs) <- gsub("_", " ", colnames(corrs))
+rownames(corrs) <- gsub("_", " ", rownames(corrs))
+corrplot(corrs, method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05, type = 'lower', diag = FALSE)
+```
+To overcome this, we:
+1) preform PCA on all the aspects of the features "radius", "perimeter" and "area":
+```{r pca shape}
 mesures.shape <- c("radius", "perimeter", "area")
 measures <- c("texture","smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
 shape <- c()
@@ -199,36 +215,20 @@ for (prefix in mesures.shape) {
   shape <- append(shape,paste0(prefix, "_se"))
   shape <- append(shape,paste0(prefix, "_worst"))
 }
-brca.subset <- brca.x.normal[,shape]
-cor(brca.subset) %>%
-corrplot(method = "square", tl.col = "black", tl.srt = 45,
-         sig.level = 0.05)
+brca.shape <- brca.x.normal[,shape]
+pca <- prcomp(brca.shape)
+summary(pca)
 ```
-
+By taking PC1 and PC2 alone (instead all the 6 features) we can explain nearly 98% of the variance.
+therefore, we will create 2 new features: "shape_pc1" and "shape_pc2" instead the previous ones.
 ```{r}
-brca.reduce <- data.frame(brca[,c('diagnosis')])
-colnames(brca.reduce) <- c("diagnosis")
-brca.reduce$shape_pc1 <- pca$x[,1]
-brca.reduce$shape_pc2 <- pca$x[,2]
+brca.reduced <- data.frame(brca[,c('diagnosis')])
+colnames(brca.reduced) <- c("diagnosis")
+brca.reduced$shape_pc1 <- pca$x[,1]
+brca.reduced$shape_pc2 <- pca$x[,2]
 ```
-```{r}
-cor(brca.reduce) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
-```
-
-### supplementary Plots:
-correlation between triplets of "mean", "se" and "worst".
-```{r corr_triplets}
-for (prefix in measures) {
-  # Find column names that start with the current prefix
-  prefix.mean <- paste0(prefix, "_mean")
-  prefix.se <- paste0(prefix, "_se")
-  prefix.worst <- paste0(prefix, "_worst")
-  brca.subset <- brca.x.normal[,c(prefix.mean, prefix.se, prefix.worst)]
-  cor(brca.subset) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
-}
-```
-
-
+2) preform PCA on every triplet of "mean", "standard error" and "worst".
+we replace the original features with PC1 and PC2 if they can explain more than 95% of the variance.
 ```{r}
 for (prefix in measures) {
   # Find column names that start with the current prefix
@@ -237,35 +237,90 @@ for (prefix in measures) {
   prefix.worst <- paste0(prefix, "_worst")
   brca.subset <- brca.x.normal[,c(prefix.mean, prefix.se, prefix.worst)]
   cat("--------", prefix, "--------\n")
-  pcs <- prcomp(brca.subset)
-  cat(prefix, ": PC1 Cumulative Proportion of Variance:", (pcs$sdev[1]^2/sum(pcs$sdev^2)), "\n")
-  brca.reduce[[paste0(prefix, "_pc1")]] <- pcs$x[,1]
-  if ((pcs$sdev[1]^2/sum(pcs$sdev^2)) < 0.9) {
-    cat(prefix, ": PC2 Cumulative Proportion of Variance:", (sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))), "\n")
-    brca.reduce[[paste0(prefix, "_pc2")]] <- pcs$x[,2]
-     if ((sum(pcs$sdev[1:2]^2/sum(pcs$sdev^2))) < 0.9) {
-      cat(prefix, ": PC3 Cumulative Proportion of Variance:", (sum(pcs$sdev^2/sum(pcs$sdev^2))), "\n")
-      brca.reduce[[paste0(prefix, "_pc3")]] <- pcs$x[,3]
-      }
+  pca <- prcomp(brca.subset)
+  exp_pc2_var <- sum(pca$sdev[1:2]^2/sum(pca$sdev^2))
+  if (exp_pc2_var < 0.95) {
+    cat("PC2 Cumulative Proportion of Variance:", exp_pc2_var, "\nNot Preforming dimentionality reduction\n")
+    brca.reduce[[paste0(prefix, "_mean")]] <- brca.x.normal[,prefix.mean]
+    brca.reduce[[paste0(prefix, "_se")]] <- brca.x.normal[,prefix.se]
+    brca.reduce[[paste0(prefix, "_worst")]] <- brca.x.normal[,prefix.worst]
+  }
+  else{
+    cat(prefix, ": PC2 Cumulative Proportion of Variance:", exp_pc2_var, "\nreplace", prefix,"mean, se and worst to PC1 and PC2\n")
+    brca.reduce[[paste0(prefix, "_pc1")]] <- pca$x[,1]
+    brca.reduce[[paste0(prefix, "_pc2")]] <- pca$x[,2]
   }
 }
 brca.x.reduce <- brca.reduce[,!(colnames(brca.reduce) %in% c("diagnosis"))]
 ```
+Now we check the correlation matrix between the features in the reduced data
 ```{r corr after pca}
-cor(brca.x.reduce) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
+corrs <- cor(brca.x.reduce)
+colnames(corrs) <- gsub("_", " ", colnames(corrs))
+rownames(corrs) <- gsub("_", " ", rownames(corrs))
+corrplot(corrs, method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05, type = 'lower', diag = FALSE)
 ```
-```{r corr before pca}
-cor(brca.x.normal) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05)
+During this analysis we will apply our methods over the raw data and the reduced version and examine if the reduced version will deliver better results.
+To visually see the two data sets we plot t-SNE on both sets, and color the observations according to the disgnosis:
+```{r}
+library(Rtsne)
+reduce.tsne <- Rtsne(brca.x.reduce,
+  pca = FALSE, perplexity = 10,
+  theta = 0.0
+)
+reduce.tsne <- data.frame(
+  TSNE1 = reduce.tsne$Y[, 1],
+  TSNE2 = reduce.tsne$Y[, 2],
+  Diagnosis = brca$diagnosis)
+p1 <- ggplot(reduce.tsne, aes(
+  x = TSNE1, y = TSNE2,
+  col = Diagnosis
+)) +
+  geom_point() + ggtitle("After dimantionality reduction") + theme(legend.position = "none")
+full.tsne <- Rtsne(brca.x,
+  pca = FALSE, perplexity = 10,
+  theta = 0.0
+)
+full.tsne <- data.frame(
+  TSNE1 = full.tsne$Y[, 1],
+  TSNE2 = full.tsne$Y[, 2],
+  Diagnosis = brca$diagnosis)
+p2 <- ggplot(full.tsne, aes(
+  x = TSNE1, y = TSNE2,
+  col = Diagnosis
+)) +
+  geom_point()  + ggtitle("Before dimantionality reduction")
+grid.arrange(p2, p1, widths=c(0.55, 0.45), ncol=2)
 ```
 
+
+### supplementary Plots:
+correlation between triplets of "mean", "se" and "worst".
+```{r corr triplets plot}
+for (prefix in measures) {
+  # Find column names that start with the current prefix
+  prefix.mean <- paste0(prefix, "_mean")
+  prefix.se <- paste0(prefix, "_se")
+  prefix.worst <- paste0(prefix, "_worst")
+  brca.subset <- brca.x.normal[,c(prefix.mean, prefix.se, prefix.worst)]
+  colnames(brca.subset) <- gsub("_", " ", colnames(brca.subset))
+  cor(brca.subset) %>% corrplot(method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05, type = 'lower', diag = FALSE)
+}
+```
+correlations between all the features that related to the shape of the tumor cells (radius, perimeter and area)
+```{r corr shape plot}
+colnames(brca.shape) <- gsub("_", " ", colnames(brca.subset))
+cor(brca.shape) %>%
+corrplot(method = "square", tl.col = "black", tl.srt = 45,
+         sig.level = 0.05, type = 'lower', diag = FALSE)
+```
 For Guy and Shir:
 the variable brca contains the whole dataframe in the raw shape
 the variable brca.x contains only the numerical features (no diagnosis)
 brca.x.normal is brca after min-max normalization
 brca.reduce and brca.x.reduce are the dataframes after dimantionality reduction
-pls try every ML algorithm on both brca (or brca.x.normal if you want it noramlized) and brca.reduce
+Try every ML algorithm on both brca (or brca.x.normal if you want it noramlized) and brca.reduce
 afterward we will see if the dimentionality reduction did helped.
-
 
 
 
