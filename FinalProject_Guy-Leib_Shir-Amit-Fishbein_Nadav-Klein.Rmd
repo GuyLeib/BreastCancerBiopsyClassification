@@ -94,6 +94,11 @@ minmax <- function(x) {
 return ((x - min(x)) / (max(x) - min(x)))
 }
 brca.x.normal <- as.data.frame(lapply(brca.x, minmax))
+# Retrieve the diagnosis column
+diagnosis <- brca$diagnosis
+
+# Combine normalized data frame with diagnosis column
+brca.normal <- cbind(diagnosis, brca.x.normal)
 ```
 ```{r show norm range}
 for (prefix in measures) {
@@ -350,27 +355,27 @@ best_confusion_matrix <- NULL
 # Perform the iterations
 for (i in 1:num_iterations) {
   # Shuffle the data
-  shuffled_data <- brca[sample(nrow(brca)), ]
+  shuffled_data <- brca.normal[sample(nrow(brca.normal)), ]
   
   # Create index to split the shuffled data into train and test sets
   index <- createDataPartition(shuffled_data$diagnosis, p = 0.8, list = FALSE)
   
   # Subset training set with index
-  brca.training <- shuffled_data[index, ]
+  brca.normal.training <- shuffled_data[index, ]
   
   # Subset test set with index
-  brca.test <- shuffled_data[-index, ]
+  brca.normal.test <- shuffled_data[-index, ]
   
   # Train a model for each k value
   for (j in 1:length(k_values)) {
     # Train a KNN model
-    model <- train(diagnosis ~ ., data = brca.training, method = 'knn', trControl = trainControl(method = "none"), tuneGrid = expand.grid(k = k_values[j]))
+    model <- train(diagnosis ~ ., data = brca.normal.training, method = 'knn', trControl = trainControl(method = "none"), tuneGrid = expand.grid(k = k_values[j]))
     
     # Make predictions on the test set
-    predictions <- predict(model, newdata = brca.test)
+    predictions <- predict(model, newdata = brca.normal.test)
     
     # Calculate accuracy for the current iteration and k value
-    accuracy <- mean(predictions == brca.test$diagnosis)
+    accuracy <- mean(predictions == brca.normal.test$diagnosis)
     
     # Add accuracy to the vector for the corresponding k value
     accuracies[j] <- accuracies[j] + accuracy
@@ -379,7 +384,7 @@ for (i in 1:num_iterations) {
     if (accuracy > best_accuracy) {
       best_k <- k_values[j]
       best_accuracy <- accuracy
-      best_confusion_matrix <- confusionMatrix(predictions, brca.test$diagnosis)
+      best_confusion_matrix <- confusionMatrix(predictions, brca.normal.test$diagnosis)
     }
   }
 }
@@ -400,7 +405,7 @@ cat("Confusion Matrix:\n")
 print(best_confusion_matrix)
 
 ```
-Next we will perform knn on the dimentianly reduced data:
+Next we will perform knn on the dimentionaly reduced data:
 
 ```{r}
 
@@ -464,7 +469,7 @@ for (j in 1:length(k_values)) {
 }
 ```
 
-As we can see,  the best k is 5 (but the difference is not significant between the different k values)
+As we can see,  the best k is  3 (but the difference is not significant between the different k values)
 ```{r}
 # Print the confusion matrix for the best k value
 cat("\nBest k value:", best_k, "\n")
