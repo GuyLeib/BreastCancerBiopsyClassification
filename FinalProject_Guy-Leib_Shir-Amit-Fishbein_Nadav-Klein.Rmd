@@ -342,7 +342,7 @@ library(caret)
 
 # Set the number of iterations and k values
 num_iterations <- 100
-k_values <- c(3, 5, 7, 9, 11)
+k_values <- c(3, 5, 7, 9, 11,15,18,21,25)
 
 # Initialize a vector to store accuracies for each k value
 accuracies <- numeric(length(k_values))
@@ -413,7 +413,7 @@ library(caret)
 
 # Set the number of iterations and k values
 num_iterations <- 100
-k_values <- c(3, 5, 7, 9, 11)
+k_values <- c(3, 5, 7, 9, 11,15,18,21,25)
 
 # Initialize a vector to store accuracies for each k value
 accuracies <- numeric(length(k_values))
