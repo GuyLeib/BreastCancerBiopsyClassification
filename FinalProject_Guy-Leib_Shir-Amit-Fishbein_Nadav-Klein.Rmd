@@ -222,10 +222,10 @@ summary(pca)
 By taking PC1 and PC2 alone (instead all the 6 features) we can explain nearly 98% of the variance.
 therefore, we will create 2 new features: "shape_pc1" and "shape_pc2" instead the previous ones.
 ```{r}
-brca.reduced <- data.frame(brca[,c('diagnosis')])
-colnames(brca.reduced) <- c("diagnosis")
-brca.reduced$shape_pc1 <- pca$x[,1]
-brca.reduced$shape_pc2 <- pca$x[,2]
+brca.reduce <- data.frame(brca[,c('diagnosis')])
+colnames(brca.reduce) <- c("diagnosis")
+brca.reduce$shape_pc1 <- pca$x[,1]
+brca.reduce$shape_pc2 <- pca$x[,2]
 ```
 2) preform PCA on every triplet of "mean", "standard error" and "worst".
 we replace the original features with PC1 and PC2 if they can explain more than 95% of the variance.
@@ -263,6 +263,8 @@ corrplot(corrs, method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.
 During this analysis we will apply our methods over the raw data and the reduced version and examine if the reduced version will deliver better results.
 To visually see the two data sets we plot t-SNE on both sets, and color the observations according to the disgnosis:
 ```{r}
+#install.packages("gridExtra")
+library(gridExtra)
 library(Rtsne)
 reduce.tsne <- Rtsne(brca.x.reduce,
   pca = FALSE, perplexity = 10,
@@ -322,8 +324,151 @@ brca.reduce and brca.x.reduce are the dataframes after dimantionality reduction
 Try every ML algorithm on both brca (or brca.x.normal if you want it noramlized) and brca.reduce
 afterward we will see if the dimentionality reduction did helped.
 
+** Applying Different Machine Learning Algorithms On The Data: **
+
+# KNN Algorithm
+
+First we will check the knn algorithm on the raw data(before performing PCA:
 
 
+```{r}
 
+library(caret)
 
+# Set the number of iterations and k values
+num_iterations <- 100
+k_values <- c(3, 5, 7, 9, 11)
 
+# Initialize a vector to store accuracies for each k value
+accuracies <- numeric(length(k_values))
+
+# Initialize variables for storing best k value and its corresponding confusion matrix
+best_k <- 0
+best_accuracy <- 0
+best_confusion_matrix <- NULL
+
+# Perform the iterations
+for (i in 1:num_iterations) {
+  # Shuffle the data
+  shuffled_data <- brca[sample(nrow(brca)), ]
+  
+  # Create index to split the shuffled data into train and test sets
+  index <- createDataPartition(shuffled_data$diagnosis, p = 0.8, list = FALSE)
+  
+  # Subset training set with index
+  brca.training <- shuffled_data[index, ]
+  
+  # Subset test set with index
+  brca.test <- shuffled_data[-index, ]
+  
+  # Train a model for each k value
+  for (j in 1:length(k_values)) {
+    # Train a KNN model
+    model <- train(diagnosis ~ ., data = brca.training, method = 'knn', trControl = trainControl(method = "none"), tuneGrid = expand.grid(k = k_values[j]))
+    
+    # Make predictions on the test set
+    predictions <- predict(model, newdata = brca.test)
+    
+    # Calculate accuracy for the current iteration and k value
+    accuracy <- mean(predictions == brca.test$diagnosis)
+    
+    # Add accuracy to the vector for the corresponding k value
+    accuracies[j] <- accuracies[j] + accuracy
+    
+    # Check if the current accuracy is the best so far
+    if (accuracy > best_accuracy) {
+      best_k <- k_values[j]
+      best_accuracy <- accuracy
+      best_confusion_matrix <- confusionMatrix(predictions, brca.test$diagnosis)
+    }
+  }
+}
+
+# Calculate the average accuracies for each k value
+average_accuracies <- accuracies / num_iterations
+
+# Print the average accuracies with the corresponding k values
+for (j in 1:length(k_values)) {
+  cat("Average Accuracy for k =", k_values[j], ":", average_accuracies[j], "\n")
+}
+```
+As we can see,  the best k is 7 (but the difference is not significant between the diffrent k values)
+```{r}
+# Print the confusion matrix for the best k value
+cat("\nBest k value:", best_k, "\n")
+cat("Confusion Matrix:\n")
+print(best_confusion_matrix)
+
+```
+Next we will perform knn on the dimentianly reduced data:
+
+```{r}
+
+library(caret)
+
+# Set the number of iterations and k values
+num_iterations <- 100
+k_values <- c(3, 5, 7, 9, 11)
+
+# Initialize a vector to store accuracies for each k value
+accuracies <- numeric(length(k_values))
+
+# Initialize variables for storing best k value and its corresponding confusion matrix
+best_k <- 0
+best_accuracy <- 0
+best_confusion_matrix <- NULL
+
+# Perform the iterations
+for (i in 1:num_iterations) {
+  # Shuffle the data
+  shuffled_data <- brca.reduce[sample(nrow(brca.reduce)), ]
+  
+  # Create index to split the shuffled data into train and test sets
+  index <- createDataPartition(shuffled_data$diagnosis, p = 0.8, list = FALSE)
+  
+  # Subset training set with index
+  brca.reduce.training <- shuffled_data[index, ]
+  
+  # Subset test set with index
+  brca.reduce.test <- shuffled_data[-index, ]
+  
+  # Train a model for each k value
+  for (j in 1:length(k_values)) {
+    # Train a KNN model
+    model <- train(diagnosis ~ ., data = brca.reduce.training, method = 'knn', trControl = trainControl(method = "none"), tuneGrid = expand.grid(k = k_values[j]))
+    
+    # Make predictions on the test set
+    predictions <- predict(model, newdata = brca.reduce.test)
+    
+    # Calculate accuracy for the current iteration and k value
+    accuracy <- mean(predictions == brca.reduce.test$diagnosis)
+    
+    # Add accuracy to the vector for the corresponding k value
+    accuracies[j] <- accuracies[j] + accuracy
+    
+    # Check if the current accuracy is the best so far
+    if (accuracy > best_accuracy) {
+      best_k <- k_values[j]
+      best_accuracy <- accuracy
+      best_confusion_matrix <- confusionMatrix(predictions, brca.reduce.test$diagnosis)
+    }
+  }
+}
+
+# Calculate the average accuracies for each k value
+average_accuracies <- accuracies / num_iterations
+
+# Print the average accuracies with the corresponding k values
+for (j in 1:length(k_values)) {
+  cat("Average Accuracy for k =", k_values[j], ":", average_accuracies[j], "\n")
+}
+```
+
+As we can see,  the best k is 5 (but the difference is not significant between the different k values)
+```{r}
+# Print the confusion matrix for the best k value
+cat("\nBest k value:", best_k, "\n")
+cat("Confusion Matrix:\n")
+print(best_confusion_matrix)
+
+```
