@@ -30,7 +30,7 @@ Biopsy features for classification of 569 malignant (cancer) and benign (not can
 Features were computationally extracted from digital images of fine needle aspirate biopsy slides.
 ## columns description
 In each observation, 10 attributes were measured for *every cell* in the biopsy (see the list below).
-Our data contain summery of those results and each row in the data contain only the mean, the standard error and the worst case among the cells (can be the larger or the most severe, depending the feature).
+Our data contain summary of those results and each row in the data contain only the mean, the standard error and the worst case among the cells (can be the larger or the most severe, depending the feature).
 overall, the data contains 3*10 features and a label (column Y) that mention wherever the mass is malignant (M) or benign (B).
 *list of the 10 measures:*
 radius, texture, perimeter, area, smoothness, compactness, concavity, concave points, symmetry, fractal dimension.
@@ -50,7 +50,7 @@ fractal_dimension: Nucleus fractal dimension ("coastline approximation" -1).
 ## Upload and initial cleaning of the data
 We are first changing the names of the columns and the labels from 'M' and 'B' to 'Malignant' and 'Benign'.
 ```{r load, message=FALSE, warning=FALSE, echo=FALSE}
-brca <-read.csv("data//brca.csv")
+brca <-read.csv("C:/Users/leibguy/Desktop/data/brca.csv")
 ```
 ```{r cleaning}
 # remove the prefix "x." from column names
@@ -477,3 +477,315 @@ cat("Confusion Matrix:\n")
 print(best_confusion_matrix)
 
 ```
+#Random Forest Algorithm
+
+First we apply the algorithm on the data set without the feature reduction. 
+```{r}
+library(randomForest)
+```
+```{r}
+set.seed(123)
+
+# Take 80 percent for training and shuffle the data.
+train_indices <- sample(nrow(brca.normal), nrow(brca.normal) * 0.8)
+train_data <- brca.normal[train_indices, ]
+
+# Assign the remaining data to the test set.
+test_data <- brca.normal[-train_indices, ]
+
+# Exclude the first column for training features.
+train_features_normal <- train_data[, -1]
+
+# Keep just the first column as the training target.
+train_target_normal <- train_data[, 1]
+
+# Exclude the first column for test features.
+test_features_normal <- test_data[, -1]
+
+# Keep just the first column as the test target.
+test_target_normal <- test_data[, 1]
+
+```
+
+```{r}
+set.seed(123)
+
+# Train the random forest models with different parameters
+num_trees <- c(50, 100, 150)  # Different numbers of trees
+max_depth <- c(5, 10, 15)  # Different depths
+results <- list()
+
+for (n in num_trees) {
+  for (d in max_depth) {
+    model <- randomForest(train_features_normal, train_target_normal, ntree = n, maxdepth = d)
+    predictions <- predict(model, test_features_normal)
+    accuracy_normal <- sum(predictions == test_target_normal) / length(test_target_normal)
+    
+    result <- list(ntrees = n, maxdepth = d, model = model, predictions = predictions, accuracy = accuracy_normal)
+    results <- c(results, list(result))
+  }
+}
+
+# Find the model with the highest accuracy
+best_result <- results[[which.max(sapply(results, function(x) x$accuracy))]]
+best_model_normal <- best_result$model
+best_predictions <- best_result$predictions
+
+```
+```{r}
+# Get feature importance data using gini importance
+importance <- importance(best_model_normal, type=2)
+importance_df <- data.frame(Feature = row.names(importance), Importance = importance[, 1])
+importance_df <- importance_df[order(importance_df$Importance, decreasing = TRUE), ]
+
+# Plot feature importance
+importance_plot <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Feature", y = "Importance") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 14),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.line = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+plot(importance_plot)
+
+```
+
+After that we apply the algorithm on the data set after the feature reduction. 
+```{r}
+set.seed(123)
+
+# Take 80 percent for training and shuffle the data.
+train_indices <- sample(nrow(brca.reduce), nrow(brca.reduce) * 0.8)
+train_data <- brca.reduce[train_indices, ]
+
+# Assign the remaining data to the test set.
+test_data <- brca.reduce[-train_indices, ]
+
+# Exclude the first column for training features.
+train_features_reduce <- train_data[, -1]
+
+# Keep just the first column as the training target.
+train_target_reduce <- train_data[, 1]
+
+# Exclude the first column for test features.
+test_features_reduce <- test_data[, -1]
+
+# Keep just the first column as the test target.
+test_target_reduce <- test_data[, 1]
+
+
+```
+```{r}
+set.seed(123)
+
+# Train the random forest models with different parameters for brca.reduce
+num_trees_reduce <- c(50, 100, 150)  # Different numbers of trees
+max_depth_reduce <- c(5, 10, 15)  # Different depths
+results_reduce <- list()
+
+for (n in num_trees_reduce) {
+  for (d in max_depth_reduce) {
+    model_reduce <- randomForest(train_features_reduce, train_target_reduce, ntree = n, maxdepth = d)
+    predictions_reduce <- predict(model_reduce, test_features_reduce)
+    accuracy_reduce <- sum(predictions_reduce == test_target_reduce) / length(test_target_reduce)
+    
+    result_reduce <- list(ntrees = n, maxdepth = d, model = model_reduce, predictions = predictions_reduce, accuracy = accuracy_reduce)
+    results_reduce <- c(results_reduce, list(result_reduce))
+  }
+}
+
+# Find the model with the highest accuracy for brca.reduce
+best_result_reduce <- results_reduce[[which.max(sapply(results_reduce, function(x) x$accuracy))]]
+best_model_reduce <- best_result_reduce$model
+best_predictions_reduce <- best_result_reduce$predictions
+
+
+```
+```{r}
+# Get feature importance data using gini importance for brca.reduce
+importance_reduce <- importance(best_model_reduce, type=2)
+importance_df_reduce <- data.frame(Feature = row.names(importance_reduce), Importance = importance_reduce[, 1])
+importance_df_reduce <- importance_df_reduce[order(importance_df_reduce$Importance, decreasing = TRUE), ]
+
+# Plot feature importance for brca.reduce
+importance_plot_reduce <- ggplot(importance_df_reduce, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Feature", y = "Importance") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 14),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.line = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+plot(importance_plot_reduce)
+```
+Now we comapre the accuracy of the 2 models that were build on two different data sets. 
+```{r}
+# Compare the accuracies
+performance <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
+                          Accuracy = c(accuracy_normal, accuracy_reduce))
+
+performance
+
+```
+We can see that the accuracy of the model that were trained on the data set after feature selection and PCA were higher. 
+
+#XGBOOST
+```{r}
+library(xgboost)
+```
+
+We now apply xg boost algorithm on the two data sets.
+```{r}
+# Convert labels to numeric values
+train_target_numeric <- ifelse(train_target_normal == "Benign", 0, 1)
+test_target_numeric <- ifelse(test_target_normal == "Benign", 0, 1)
+
+# Train the xgboost model
+xgb_model_normal <- xgboost(data = as.matrix(train_features_normal), label = train_target_numeric, nrounds = 200, objective = "binary:logistic")
+
+# Make predictions on the test set
+predictions <- predict(xgb_model_normal, as.matrix(test_features_normal))
+
+# Convert predictions to class labels
+predicted_labels <- ifelse(predictions >= 0.5, 1, 0)
+
+# Calculate accuracy
+accuracy <- sum(predicted_labels == test_target_numeric) / length(test_target_numeric)
+
+# Calculate precision
+precision <- sum(predicted_labels == 1 & test_target_numeric == 1) / sum(predicted_labels == 1)
+
+# Calculate recall
+recall <- sum(predicted_labels == 1 & test_target_numeric == 1) / sum(test_target_numeric == 1)
+
+# Calculate F1-score
+f1_score <- 2 * precision * recall / (precision + recall)
+
+# Calculate AUC-ROC
+roc <- roc(test_target_numeric, predictions)
+auc_roc <- auc(roc)
+
+# Print performance metrics
+cat("Performance Metrics for brca.normal dataset:\n")
+cat("Accuracy:", accuracy, "\n")
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("F1-Score:", f1_score, "\n")
+cat("AUC-ROC:", auc_roc, "\n")
+
+```
+we can see that logloss started to converge after 158 rounds. 
+```{r}
+library(pROC)
+```
+Feature importance for the normal data model 
+```{r}
+# Get feature importance matrix
+importance_matrix <- xgb.importance(model = xgb_model_normal)
+
+# Convert importance matrix to data.frame
+importance_df <- data.frame(Feature = importance_matrix$Feature, Importance = importance_matrix$Gain)
+
+# Sort the importance in descending order
+importance_df <- importance_df[order(importance_df$Importance, decreasing = TRUE), ]
+
+# Plot feature importance
+importance_plot <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Feature", y = "Importance") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 14),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.line = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+print(importance_plot)
+
+```
+
+```{r}
+
+set.seed(123)
+# Convert labels to numeric values
+train_target_numeric <- ifelse(train_target_reduce == "Benign", 0, 1)
+test_target_numeric <- ifelse(test_target_reduce == "Benign", 0, 1)
+
+# Train the XGBoost model on brca.reduce
+xgb_model_reduce <- xgboost(data = as.matrix(train_features_reduce), label = train_target_numeric, nrounds = 200, objective = "binary:logistic")
+
+# Make predictions on test set
+predictions_reduce <- predict(xgb_model_reduce, as.matrix(test_features_reduce))
+
+# Calculate accuracy
+accuracy_reduce <- sum(round(predictions_reduce) == test_target_numeric) / length(test_target_numeric)
+
+# Calculate precision
+precision <- sum(predicted_labels == 1 & test_target_numeric == 1) / sum(predicted_labels == 1)
+
+# Calculate recall
+recall <- sum(predicted_labels == 1 & test_target_numeric == 1) / sum(test_target_numeric == 1)
+
+# Calculate F1-score
+f1_score <- 2 * precision * recall / (precision + recall)
+
+# Calculate AUC-ROC
+roc <- roc(test_target_numeric, predictions)
+auc_roc <- auc(roc)
+
+# Print performance metrics
+cat("Performance Metrics for brca.normal dataset:\n")
+cat("Accuracy:", accuracy, "\n")
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("F1-Score:", f1_score, "\n")
+cat("AUC-ROC:", auc_roc, "\n")
+
+```
+Feature importance for the reudced features model 
+```{r}
+# Get feature importance matrix
+importance_matrix <- xgb.importance(model = xgb_model_reduce)
+
+# Convert importance matrix to data.frame
+importance_df <- data.frame(Feature = importance_matrix$Feature, Importance = importance_matrix$Gain)
+
+# Sort the importance in descending order
+importance_df <- importance_df[order(importance_df$Importance, decreasing = TRUE), ]
+
+# Plot feature importance
+importance_plot <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Feature", y = "Importance") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 14),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.line = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+print(importance_plot)
+```
+We can see that in both of the model the most significat feature for classification is the area (shape?) and the concave. 
+```{r}
+# Compare the accuracies
+performance_xgb <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
+                              Accuracy = c(accuracy_normal, accuracy_reduce))
+
+performance_xgb
+
+```
+Also here we can see that the performance of the reduces data set is better.
