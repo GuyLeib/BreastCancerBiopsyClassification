@@ -659,7 +659,7 @@ predictions <- predict(xgb_model_normal, as.matrix(test_features_normal))
 predicted_labels <- ifelse(predictions >= 0.5, 1, 0)
 
 # Calculate accuracy
-accuracy <- sum(predicted_labels == test_target_numeric) / length(test_target_numeric)
+accuracy_normal <- sum(predicted_labels == test_target_numeric) / length(test_target_numeric)
 
 # Calculate precision
 precision <- sum(predicted_labels == 1 & test_target_numeric == 1) / sum(predicted_labels == 1)
@@ -676,7 +676,7 @@ auc_roc <- auc(roc)
 
 # Print performance metrics
 cat("Performance Metrics for brca.normal dataset:\n")
-cat("Accuracy:", accuracy, "\n")
+cat("Accuracy:", accuracy_normal, "\n")
 cat("Precision:", precision, "\n")
 cat("Recall:", recall, "\n")
 cat("F1-Score:", f1_score, "\n")
@@ -723,7 +723,7 @@ train_target_numeric <- ifelse(train_target_reduce == "Benign", 0, 1)
 test_target_numeric <- ifelse(test_target_reduce == "Benign", 0, 1)
 
 # Train the XGBoost model on brca.reduce
-xgb_model_reduce <- xgboost(data = as.matrix(train_features_reduce), label = train_target_numeric, nrounds = 200, objective = "binary:logistic")
+xgb_model_reduce <- xgboost(data = as.matrix(train_features_reduce), label = train_target_numeric, nrounds = 300, objective = "binary:logistic")
 
 # Make predictions on test set
 predictions_reduce <- predict(xgb_model_reduce, as.matrix(test_features_reduce))
@@ -746,7 +746,7 @@ auc_roc <- auc(roc)
 
 # Print performance metrics
 cat("Performance Metrics for brca.normal dataset:\n")
-cat("Accuracy:", accuracy, "\n")
+cat("Accuracy:", accuracy_reduce, "\n")
 cat("Precision:", precision, "\n")
 cat("Recall:", recall, "\n")
 cat("F1-Score:", f1_score, "\n")
