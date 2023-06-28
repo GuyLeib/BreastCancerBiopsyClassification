@@ -316,18 +316,11 @@ for (prefix in measures) {
 ```
 correlations between all the features that related to the shape of the tumor cells (radius, perimeter and area)
 ```{r corr shape plot}
-colnames(brca.shape) <- gsub("_", " ", colnames(brca.subset))
+colnames(brca.shape) <- gsub("_", " ", colnames(brca.shape))
 cor(brca.shape) %>%
 corrplot(method = "square", tl.col = "black", tl.srt = 45,
          sig.level = 0.05, type = 'lower', diag = FALSE)
 ```
-For Guy and Shir:
-the variable brca contains the whole dataframe in the raw shape
-the variable brca.x contains only the numerical features (no diagnosis)
-brca.x.normal is brca after min-max normalization
-brca.reduce and brca.x.reduce are the dataframes after dimantionality reduction
-Try every ML algorithm on both brca (or brca.x.normal if you want it noramlized) and brca.reduce
-afterward we will see if the dimentionality reduction did helped.
 
 ** Applying Different Machine Learning Algorithms On The Data: **
 
