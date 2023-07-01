@@ -406,65 +406,86 @@ We used the default hyper parameters, since they gave us the best results. We sp
 (450 samples, 80%) and test set (119 samples, 20%)
 Trying SVM on the raw data:
 ```{r}
-#install.packages("e1071")
 library(e1071)
-#install.packages("gmodels")
 library(gmodels)
+library(caret)
 
 # split to train and test 
 shuffled_data <- brca.normal[sample(nrow(brca.normal)), ]
 
 # Create index to split based on labels  
-index <- createDataPartition(shuffled_data$diagnosis, p=0.8, list=FALSE)
+index <- createDataPartition(shuffled_data$diagnosis, p = 0.8, list = FALSE)
 
 # Subset training set with index
-brca.normal.training <- shuffled_data[index,]
-brca.normal.training.labels <- as.factor(brca.normal.training[,1])
-brca.normal.test <- shuffled_data[-index,]
-brca.normal.test.labels <- as.factor(brca.normal.test[,1])
-regressor_svm <- svm(formula = brca.normal.training.labels ~ ., 
-                    data=brca.normal.training,
-                    type = 'C-classification',
-                    kernel = 'linear')
-y_pred1 = predict(regressor_svm, newdata = brca.normal.test)
-# Svm's accuracy
-print((paste('accuracy:',sum(y_pred1 == brca.normal.test.labels)/length(brca.normal.test.labels))))
+train_sample <- sample(569, 456)
+brca.normal.training<- brca.x.normal[train_sample, ]
+brca.normal.training.labels <- as.factor(brca.normal$diagnosis[train_sample])
+brca.normal.test <- brca.x.normal[-train_sample, ]
+brca.normal.test.labels <- brca.normal$diagnosis[-train_sample]
+
+
+# Train the SVM model
+regressor_svm <- svm(formula = brca.normal.training.labels ~ .,
+                     data = brca.normal.training,
+                     type = 'C-classification',
+                     kernel = 'linear')
+
+# Make predictions on the test set
+y_pred1 <- predict(regressor_svm, newdata = brca.normal.test)
+
+
+
+# Calculate and print SVM accuracy
+accuracy <- sum(y_pred1 == brca.normal.test.labels) / length(brca.normal.test.labels)
+print(paste('accuracy:', accuracy))
+
+# Create a contingency table
 CrossTable(brca.normal.test.labels, y_pred1, prop.chisq = FALSE, prop.c = FALSE, 
            prop.r = FALSE, dnn = c('actual type', 'predicted type'))
 
-
 ```
+
 
 trying svm on the reduced data:
 ```{r}
 
-# split to train and test 
-shuffled_data <- brca.reduce[sample(nrow(brca.reduce)), ]
-
-# Create index to split based on labels  
-index <- createDataPartition(shuffled_data$diagnosis, p=0.8, list=FALSE)
 
 # Subset training set with index
-brca.reduce.training <- shuffled_data[index,]
-brca.reduce.training.labels <- as.factor(brca.reduce.training[,1])
-brca.reduce.test <- shuffled_data[-index,]
-brca.reduce.test.labels <- as.factor(brca.reduce.test[,1])
-regressor_svm <- svm(formula = brca.reduce.training.labels ~ ., 
-                    data=brca.reduce.training,
-                    type = 'C-classification',
-                    kernel = 'linear')
-y_pred1 = predict(regressor_svm, newdata = brca.reduce.test)
-# Svm's accuracy
-print((paste('accuracy:',sum(y_pred1 == brca.reduce.test.labels)/length(brca.reduce.test.labels))))
-CrossTable(brca.reduce.test.labels, y_pred1, prop.chisq = FALSE, prop.c = FALSE, 
+train_sample <- sample(569, 456)
+brca.x.reduce.training<- brca.x.reduce[train_sample, ]
+brca.x.reduce.training.labels <- as.factor(brca.reduce$diagnosis[train_sample])
+brca.x.reduce.test <-brca.x.reduce[-train_sample, ]
+brca.x.reduce.test.labels <- brca.reduce$diagnosis[-train_sample]
+
+
+# Train the SVM model
+regressor_svm <- svm(formula = brca.x.reduce.training.labels ~ .,
+                     data = brca.x.reduce.training,
+                     type = 'C-classification',
+                     kernel = 'linear')
+
+# Make predictions on the test set
+y_pred1 <- predict(regressor_svm, newdata = brca.x.reduce.test)
+
+
+
+# Calculate and print SVM accuracy
+accuracy <- sum(y_pred1 == brca.x.reduce.test.labels) / length(brca.x.reduce.test.labels)
+print(paste('accuracy:', accuracy))
+
+# Create a contingency table
+CrossTable(brca.x.reduce.test.labels, y_pred1, prop.chisq = FALSE, prop.c = FALSE, 
            prop.r = FALSE, dnn = c('actual type', 'predicted type'))
 
+
 ```
+
 
 #Random Forest Algorithm
 
 First we apply the algorithm on the data set without the feature reduction. 
-```{r}
+
+
 library(randomForest)
 ```
 ```{r}
