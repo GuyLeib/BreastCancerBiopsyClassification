@@ -410,18 +410,13 @@ library(e1071)
 library(gmodels)
 library(caret)
 
-# split to train and test 
-shuffled_data <- brca.normal[sample(nrow(brca.normal)), ]
-
-# Create index to split based on labels  
-index <- createDataPartition(shuffled_data$diagnosis, p = 0.8, list = FALSE)
 
 # Subset training set with index
 train_sample <- sample(569, 456)
 brca.normal.training<- brca.x.normal[train_sample, ]
 brca.normal.training.labels <- as.factor(brca.normal$diagnosis[train_sample])
 brca.normal.test <- brca.x.normal[-train_sample, ]
-brca.normal.test.labels <- brca.normal$diagnosis[-train_sample]
+brca.normal.test.labels <- as.factor(brca.normal$diagnosis[-train_sample])
 
 
 # Train the SVM model
@@ -445,6 +440,22 @@ CrossTable(brca.normal.test.labels, y_pred1, prop.chisq = FALSE, prop.c = FALSE,
 
 ```
 
+```{r}
+# Extract SVM coefficients and SVs
+SVM_coefs <- t(regressor_svm$coefs) %*% regressor_svm$SV
+
+# Convert SVM coefficients to a data frame for easier plotting
+coefs_df <- data.frame(factors = colnames(SVM_coefs), importance = t(SVM_coefs))
+
+# Sort the factors by their importance
+coefs_df <- coefs_df[order(coefs_df$importance, decreasing = TRUE), ]
+
+# Create a bar plot of factors' importance with colors and rotated labels
+barplot(coefs_df$importance, names.arg = coefs_df$factors, 
+        main = "SVM Factors Importance", ylab = "Importance",
+        col =  "purple", las = 2, cex.names = 0.55)
+
+```
 
 trying svm on the reduced data:
 ```{r}
@@ -455,7 +466,7 @@ train_sample <- sample(569, 456)
 brca.x.reduce.training<- brca.x.reduce[train_sample, ]
 brca.x.reduce.training.labels <- as.factor(brca.reduce$diagnosis[train_sample])
 brca.x.reduce.test <-brca.x.reduce[-train_sample, ]
-brca.x.reduce.test.labels <- brca.reduce$diagnosis[-train_sample]
+brca.x.reduce.test.labels <- as.factor(brca.reduce$diagnosis[-train_sample])
 
 
 # Train the SVM model
@@ -480,6 +491,24 @@ CrossTable(brca.x.reduce.test.labels, y_pred1, prop.chisq = FALSE, prop.c = FALS
 
 ```
 
+```{r}
+# Extract SVM coefficients and SVs
+SVM_coefs <- t(regressor_svm$coefs) %*% regressor_svm$SV
+
+# Convert SVM coefficients to a data frame for easier plotting
+coefs_df <- data.frame(factors = colnames(SVM_coefs), importance = t(SVM_coefs))
+
+# Sort the factors by their importance
+coefs_df <- coefs_df[order(coefs_df$importance, decreasing = TRUE), ]
+# Define colors for the bar plot
+
+# Create a bar plot of factors' importance with colors and rotated labels
+barplot(coefs_df$importance, names.arg = coefs_df$factors, 
+        main = "SVM Factors Importance", ylab = "Importance",
+        col = "purple", las = 2, cex.names = 0.55)
+
+
+```
 
 #Random Forest Algorithm
 
