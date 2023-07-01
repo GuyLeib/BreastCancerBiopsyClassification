@@ -50,7 +50,7 @@ fractal_dimension: Nucleus fractal dimension ("coastline approximation" -1).
 ## Upload and initial cleaning of the data
 We are first changing the names of the columns and the labels from 'M' and 'B' to 'Malignant' and 'Benign'.
 ```{r load, message=FALSE, warning=FALSE, echo=FALSE}
-brca <-read.csv("C:/Users/leibguy/Desktop/data/brca.csv")
+brca <-read.csv("data//brca.csv")
 ```
 ```{r cleaning}
 # remove the prefix "x." from column names
@@ -328,148 +328,77 @@ corrplot(method = "square", tl.col = "black", tl.srt = 45,
 
 First we will check the knn algorithm on the raw data(before performing PCA:
 
-
 ```{r}
-
 library(caret)
+# Shuffle the data:
+shuffled_data <- brca.normal[sample(nrow(brca.normal)), ]
 
-# Set the number of iterations and k values
-num_iterations <- 100
-k_values <- c(3, 5, 7, 9, 11,15,18,21,25)
+# Create index to split based on labels  
+index <- createDataPartition(shuffled_data$diagnosis, p=0.8, list=FALSE)
 
-# Initialize a vector to store accuracies for each k value
-accuracies <- numeric(length(k_values))
+# Subset training set with index
+brca.normal.training <- shuffled_data[index,]
 
-# Initialize variables for storing best k value and its corresponding confusion matrix
-best_k <- 0
-best_accuracy <- 0
-best_confusion_matrix <- NULL
+# Subset test set with index
+brca.normal.test <- shuffled_data[-index,]
 
-# Perform the iterations
-for (i in 1:num_iterations) {
-  # Shuffle the data
-  shuffled_data <- brca.normal[sample(nrow(brca.normal)), ]
-  
-  # Create index to split the shuffled data into train and test sets
-  index <- createDataPartition(shuffled_data$diagnosis, p = 0.8, list = FALSE)
-  
-  # Subset training set with index
-  brca.normal.training <- shuffled_data[index, ]
-  
-  # Subset test set with index
-  brca.normal.test <- shuffled_data[-index, ]
-  
-  # Train a model for each k value
-  for (j in 1:length(k_values)) {
-    # Train a KNN model
-    model <- train(diagnosis ~ ., data = brca.normal.training, method = 'knn', trControl = trainControl(method = "none"), tuneGrid = expand.grid(k = k_values[j]))
-    
-    # Make predictions on the test set
-    predictions <- predict(model, newdata = brca.normal.test)
-    
-    # Calculate accuracy for the current iteration and k value
-    accuracy <- mean(predictions == brca.normal.test$diagnosis)
-    
-    # Add accuracy to the vector for the corresponding k value
-    accuracies[j] <- accuracies[j] + accuracy
-    
-    # Check if the current accuracy is the best so far
-    if (accuracy > best_accuracy) {
-      best_k <- k_values[j]
-      best_accuracy <- accuracy
-      best_confusion_matrix <- confusionMatrix(predictions, brca.normal.test$diagnosis)
-    }
-  }
-}
 
-# Calculate the average accuracies for each k value
-average_accuracies <- accuracies / num_iterations
+# Train a model
+model_knn <- train(brca.normal.training[, 2:31], brca.normal.training[, 1], method='knn')
 
-# Print the average accuracies with the corresponding k values
-for (j in 1:length(k_values)) {
-  cat("Average Accuracy for k =", k_values[j], ":", average_accuracies[j], "\n")
-}
+
+# Access the optimal k value
+best_k <- model_knn$bestTune$k
+# Print the best k value
+cat("Best k is:", best_k, "\n")
+
+# Predict the labels of the test set
+predictions<-predict.train(object=model_knn,brca.normal.test[,2:31], type="raw")
+
+# Evaluate the predictions
+table(predictions)
+
+# Confusion matrix 
+confusionMatrix(predictions,brca.normal.test[,1])
+
 ```
-As we can see,  the best k is 7 (but the difference is not significant between the diffrent k values)
+
+Now we will check the knn algorithm on the reduced data:
 ```{r}
-# Print the confusion matrix for the best k value
-cat("\nBest k value:", best_k, "\n")
-cat("Confusion Matrix:\n")
-print(best_confusion_matrix)
+# Shuffle the data:
+shuffled_data <- brca.normal[sample(nrow(brca.reduce)), ]
+
+# Create index to split based on labels  
+index <- createDataPartition(shuffled_data$diagnosis, p=0.8, list=FALSE)
+
+# Subset training set with index
+brca.normal.training <- shuffled_data[index,]
+
+# Subset test set with index
+brca.normal.test <- shuffled_data[-index,]
+
+
+
+# Train a model
+model_knn <- train(brca.reduce.training[, 2:20], brca.reduce.training[, 1], method='knn')
+
+
+# Access the optimal k value
+best_k <- model_knn$bestTune$k
+# Print the best k value
+cat("Best k is:", best_k, "\n")
+
+# Predict the labels of the test set
+predictions<-predict.train(object=model_knn,brca.reduce.test[,2:20], type="raw")
+
+# Evaluate the predictions
+table(predictions)
+
+# Confusion matrix 
+confusionMatrix(predictions,brca.reduce.test[,1])
 
 ```
-Next we will perform knn on the dimentionaly reduced data:
-
-```{r}
-
-library(caret)
-
-# Set the number of iterations and k values
-num_iterations <- 100
-k_values <- c(3, 5, 7, 9, 11,15,18,21,25)
-
-# Initialize a vector to store accuracies for each k value
-accuracies <- numeric(length(k_values))
-
-# Initialize variables for storing best k value and its corresponding confusion matrix
-best_k <- 0
-best_accuracy <- 0
-best_confusion_matrix <- NULL
-
-# Perform the iterations
-for (i in 1:num_iterations) {
-  # Shuffle the data
-  shuffled_data <- brca.reduce[sample(nrow(brca.reduce)), ]
-  
-  # Create index to split the shuffled data into train and test sets
-  index <- createDataPartition(shuffled_data$diagnosis, p = 0.8, list = FALSE)
-  
-  # Subset training set with index
-  brca.reduce.training <- shuffled_data[index, ]
-  
-  # Subset test set with index
-  brca.reduce.test <- shuffled_data[-index, ]
-  
-  # Train a model for each k value
-  for (j in 1:length(k_values)) {
-    # Train a KNN model
-    model <- train(diagnosis ~ ., data = brca.reduce.training, method = 'knn', trControl = trainControl(method = "none"), tuneGrid = expand.grid(k = k_values[j]))
-    
-    # Make predictions on the test set
-    predictions <- predict(model, newdata = brca.reduce.test)
-    
-    # Calculate accuracy for the current iteration and k value
-    accuracy <- mean(predictions == brca.reduce.test$diagnosis)
-    
-    # Add accuracy to the vector for the corresponding k value
-    accuracies[j] <- accuracies[j] + accuracy
-    
-    # Check if the current accuracy is the best so far
-    if (accuracy > best_accuracy) {
-      best_k <- k_values[j]
-      best_accuracy <- accuracy
-      best_confusion_matrix <- confusionMatrix(predictions, brca.reduce.test$diagnosis)
-    }
-  }
-}
-
-# Calculate the average accuracies for each k value
-average_accuracies <- accuracies / num_iterations
-
-# Print the average accuracies with the corresponding k values
-for (j in 1:length(k_values)) {
-  cat("Average Accuracy for k =", k_values[j], ":", average_accuracies[j], "\n")
-}
-```
-
-As we can see,  the best k is  3 (but the difference is not significant between the different k values)
-```{r}
-# Print the confusion matrix for the best k value
-cat("\nBest k value:", best_k, "\n")
-cat("Confusion Matrix:\n")
-print(best_confusion_matrix)
-
-```
+As we can see, the accuracy of the knn model improved after dimensionality reduction.
 #Random Forest Algorithm
 
 First we apply the algorithm on the data set without the feature reduction. 
