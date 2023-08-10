@@ -2,7 +2,6 @@
 title: "Breast Cancer Biopsy Classification Project"
 subtitle:  "Guy Leib (316311190), Shir Amit Fishbein (207640228), Nadav Klein (318865698)"
 authors: Guy Leib, Shir Amit Fishbein, Nadav Klein
-output: pdf_document
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -12,20 +11,23 @@ knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
 library(tidyverse)
 library(patchwork)
-library(dplyr) 
-```
-```{r}
-#install.packages("GGally")
-#install.packages("corrplot")
+library(dplyr)
 library(corrplot)
 library(GGally)
 library(plotly)
+library(gridExtra)
+library(Rtsne)
+library(caret)
+library(e1071)
+library(gmodels)
+library(randomForest)
+library(xgboost)
+library(pROC)
 ```
-
-
-<Opening paragraph>
+<Add here Opening paragraph>
 
 # The Data
+The Data were taken from Kaggle:
 Biopsy features for classification of 569 malignant (cancer) and benign (not cancer) breast masses.
 Features were computationally extracted from digital images of fine needle aspirate biopsy slides.
 ## columns description
@@ -43,12 +45,14 @@ compactness:	 Nucleus compactness (perimeter^2/area - 1).
 concavity:	Nucleus concavity (severity of concave portions of the contour).
 concave_points:	Number of concave portions of the nucleus contour.
 symmetry:	Nucleus Symmetry.
-fractal_dimension: Nucleus fractal dimension ("coastline approximation" -1).
+fractal_dimension: Nucleus fractal dimension ("coastline approximation" - 1).
 
 
 # Get started
 ## Upload and initial cleaning of the data
 We are first changing the names of the columns and the labels from 'M' and 'B' to 'Malignant' and 'Benign'.
+We first uploaded the data and changed the names of some of the columns, we also removed whitespaces and removed unnecessary columns.
+The final columns names are:
 ```{r load, message=FALSE, warning=FALSE, echo=FALSE}
 brca <-read.csv("data//brca.csv")
 ```
@@ -65,7 +69,7 @@ brca.x <- brca[,!(colnames(brca) %in% c("diagnosis"))]
 colnames(brca)
 ```
 ## Show values range
-Afterward, to examine our data, we want to see the ranges of the values within each column
+Afterward, to examine our data, we want to see the ranges of the values within each column, and see if there are NAs:
 ```{r examine}
 measures <- c("radius", "texture", "perimeter", "area", "smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
 cat("Range of values in the numerical columns: \n")
@@ -84,11 +88,10 @@ for (prefix in measures) {
 }
 cat("\n\nnumber of NAs in dataset: ",sum(is.na(brca)))
 ```
-
 Above we see the ranges of the values in our data and that there are no missing values. all the features are numeric.
 # Data cleaning
 ## Normalization
-Because we have different ranges and we don't want that the scale of the feature will be a factor during the study we would like to normalize each column to values between 0 and 1 by preforming Min-Max normalization
+Because we have different ranges and we don't want that the scale of the feature will be a factor during the study we normalized each column to values between 0 and 1 by performing Min-Max normalization.
 ```{r norm}
 minmax <- function(x) {
 return ((x - min(x)) / (max(x) - min(x)))
@@ -116,7 +119,7 @@ for (prefix in measures) {
 }
 ```
 
-# Exploratory Data Analysis
+# Exploratory Data Analysis (EDA)
 ## Balance
 First, we want to see if the labels are balanced:
 ```{r}
@@ -137,12 +140,12 @@ ggplot(df, aes(x = "", y = perc, fill = diagnosis)) +
   coord_polar(theta = "y")
 ```
 We can see that the data doesn't contain significant bias toward one of the labels.
-it is possible that it could effect on the results but from the other hand we don't want to lose data that can be significant.
+It is possible that it could affect the results but from the other hand we don't want to lose data that can be significant.
 therefore, considering that the bias is not very large, we decided to not make changes.
 
 ## distributions differences
 We want to explore if we can see visually how the measures are related to the diagnosis,
-we create box plots to each aspect of each measure for both labels - Benign and Malignant.
+we created box plots to each aspect of each measure for both labels - Benign and Malignant.
 ```{r mean plot}
 box_df <- as_tibble(brca.x.normal) %>%
   select(ends_with("_mean")) %>%
@@ -156,7 +159,7 @@ p.mean <- ggplot(box_df,
   scale_fill_manual(values = c("#75c731", "#0488cf")) +
   labs(x = "Feature (mean)", y = "Standardized value") +
   theme_minimal(base_size = 12) +
-  theme(axis.text.x = element_text(size = 7))
+  theme(axis.text.x = element_text(size = 7, angle = 45))
 p.mean + plot_annotation(title = "Mean values distribution")
 ```
 ```{r se plot}
@@ -170,9 +173,9 @@ p.mean <- ggplot(box_df,
            value, fill = diagnosis)) +
   geom_boxplot() +
   scale_fill_manual(values = c("#75c731", "#0488cf")) +
-  labs(x = "Feature (standard error)", y = "standardized value") +
+  labs(x = "Feature (standard error)", y = "Standardized value") +
   theme_minimal(base_size = 12) +
-  theme(axis.text.x = element_text(size = 7))
+  theme(axis.text.x = element_text(size = 7, angle = 45))
 p.mean + plot_annotation(title = "Standard error values distribution")
 ```
 ```{r worst plot}
@@ -186,29 +189,30 @@ p.mean <- ggplot(box_df,
            value, fill = diagnosis)) +
   geom_boxplot() +
   scale_fill_manual(values = c("#75c731", "#0488cf")) +
-  labs(x = "Feature (worst)", y = "standardized value") +
+  labs(x = "Feature (worst)", y = "Standardized value") +
   theme_minimal(base_size = 12) +
-  theme(axis.text.x = element_text(size = 7))
+  theme(axis.text.x = element_text(size = 7, angle = 45))
 p.mean + plot_annotation(title = "Worst values distribution")
 ```
 We see from the plots that the features are indeed related to the diagnosis, but that a single feature cannot predict the label alone.
 Our challenge during this work will be to combine the features in a way that will give the best prediction.
 
 
-# Feture selection
-Because the nature of our data, having 3 aspects of every feature, there might be biases while applying VM models using all the features, where there can be duplicates in the trends between them.
-moreover, the "worst" columns are often in correlation with the "mean" and the "se" of the same measure. [see supplement figures]
-To overcome this, we apply PCA on each triplet of "mean", "se" and "worst" and create new data-frame with columns of the PCs (until 95% contribution of variables) instead of the whole triplets.
+# Feture selection and dimensionality reduction
+Because the nature of our data, having 3 aspects of every feature, there might be biases while applying ML models using all the features, where there can be duplicates in the trends between them.
+Moreover, the "worst" columns are often in correlation with the "mean" and the "se" of the same measure. [see supplement figure 1A]
 In addition, even between the different measures, we can find duplicates:
-The radius of a cell has strong correlation to it's perimeter and area [also in the supplement figures].
-To present our claim here is the correlations between all the features:
+The radius of a cell has strong correlation to it's perimeter and area [also in the supplement figure 1B].
+To present our claim, here is the correlations between all the features:
 ```{r corr before pca}
 corrs <- cor(brca.x.normal)
 colnames(corrs) <- gsub("_", " ", colnames(corrs))
 rownames(corrs) <- gsub("_", " ", rownames(corrs))
 corrplot(corrs, method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05, type = 'lower', diag = FALSE)
 ```
-To overcome this, we:
+After the dimensionality reduction, we will see if the correlations between the features will be weaker, as expected.
+
+To overcome the issues we mentioned, we:
 1) preform PCA on all the aspects of the features "radius", "perimeter" and "area":
 ```{r pca shape}
 mesures.shape <- c("radius", "perimeter", "area")
@@ -224,7 +228,7 @@ brca.shape <- brca.x.normal[,shape]
 pca <- prcomp(brca.shape)
 summary(pca)
 ```
-By taking PC1 and PC2 alone (instead all the 6 features) we can explain nearly 98% of the variance.
+By taking PC1 and PC2 alone (instead all the 9 features) we can explain nearly 98% of the variance.
 therefore, we will create 2 new features: "shape_pc1" and "shape_pc2" instead the previous ones.
 ```{r}
 brca.reduce <- data.frame(brca[,c('diagnosis')])
@@ -266,11 +270,8 @@ rownames(corrs) <- gsub("_", " ", rownames(corrs))
 corrplot(corrs, method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05, type = 'lower', diag = FALSE)
 ```
 During this analysis we will apply our methods over the raw data and the reduced version and examine if the reduced version will deliver better results.
-To visually see the two data sets we plot t-SNE on both sets, and color the observations according to the disgnosis:
+To visually see the two data sets we plotted t-SNE on both sets, and colored the observations according to the diagnosis:
 ```{r}
-#install.packages("gridExtra")
-library(gridExtra)
-library(Rtsne)
 reduce.tsne <- Rtsne(brca.x.reduce,
   pca = FALSE, perplexity = 10,
   theta = 0.0
@@ -322,14 +323,14 @@ corrplot(method = "square", tl.col = "black", tl.srt = 45,
          sig.level = 0.05, type = 'lower', diag = FALSE)
 ```
 
-** Applying Different Machine Learning Algorithms On The Data: **
+# Applying Different Machine Learning Algorithms On The Data:
 
 # KNN Algorithm
 
-First we will check the knn algorithm on the raw data(before performing PCA:
+First, we will check the KNN algorithm on the raw data (before performing the PCA):
 
 ```{r}
-library(caret)
+set.seed(613)
 # Shuffle the data:
 shuffled_data <- brca.normal[sample(nrow(brca.normal)), ]
 
@@ -359,12 +360,12 @@ predictions<-predict.train(object=model_knn,brca.normal.test[,2:31], type="raw")
 table(predictions)
 
 # Confusion matrix 
-confusionMatrix(predictions,brca.normal.test[,1])
-
+confusionMatrix(predictions,brca.normal.test[,1], positive="Malignant")
 ```
 
 Now we will check the knn algorithm on the reduced data:
 ```{r}
+set.seed(613)
 # Shuffle the data:
 shuffled_data <- brca.reduce[sample(nrow(brca.reduce)), ]
 
@@ -380,7 +381,7 @@ brca.reduced.test <- shuffled_data[-index,]
 
 
 # Train a model
-model_knn <- train(brca.reduce.training[, 2:20], brca.reduce.training[, 1], method='knn')
+model_knn <- train(brca.reduced.training[, 2:20], brca.reduced.training[, 1], method='knn')
 
 
 # Access the optimal k value
@@ -389,35 +390,34 @@ best_k <- model_knn$bestTune$k
 cat("Best k is:", best_k, "\n")
 
 # Predict the labels of the test set
-predictions<-predict.train(object=model_knn,brca.reduce.test[,2:20], type="raw")
+predictions<-predict.train(object=model_knn,brca.reduced.test[,2:20], type="raw")
 
 # Evaluate the predictions
 table(predictions)
 
 # Confusion matrix 
-confusionMatrix(predictions,brca.reduce.test[,1])
+confusionMatrix(predictions,brca.reduced.test[,1], positive="Malignant")
 
 ```
-As we can see, the accuracy of the knn model improved after dimensionality reduction.
+As we can see, the accuracy of the KNN model improved only by a bit after the dimensionality reduction.
+The sensitivity measurement, which indicates on the rate of the un-detected malignancy cases (high sensitivity = low un-detected rate).
+Because the nature of our data, it is extremely important to get the highest sensitivity possible.
+We will proceed to more algorithms in the pursuit after better sensitivity.
 
 # SVM algorithm
+We will perform SVM, which has the advantage of the ability to extract coefficients, and give us the importance of each feature.
 
 We used the default hyper parameters, since they gave us the best results. We split the data into train set
 (450 samples, 80%) and test set (119 samples, 20%)
 Trying SVM on the raw data:
 ```{r}
-library(e1071)
-library(gmodels)
-library(caret)
-
-
+set.seed(23)
 # Subset training set with index
 train_sample <- sample(569, 456)
 brca.normal.training<- brca.x.normal[train_sample, ]
 brca.normal.training.labels <- as.factor(brca.normal$diagnosis[train_sample])
 brca.normal.test <- brca.x.normal[-train_sample, ]
 brca.normal.test.labels <- as.factor(brca.normal$diagnosis[-train_sample])
-
 
 # Train the SVM model
 regressor_svm <- svm(formula = brca.normal.training.labels ~ .,
@@ -429,37 +429,29 @@ regressor_svm <- svm(formula = brca.normal.training.labels ~ .,
 y_pred1 <- predict(regressor_svm, newdata = brca.normal.test)
 
 
-
-# Calculate and print SVM accuracy
-accuracy <- sum(y_pred1 == brca.normal.test.labels) / length(brca.normal.test.labels)
-print(paste('accuracy:', accuracy))
-
-# Create a contingency table
-CrossTable(brca.normal.test.labels, y_pred1, prop.chisq = FALSE, prop.c = FALSE, 
-           prop.r = FALSE, dnn = c('actual type', 'predicted type'))
-
+# Confusion matrix 
+confusionMatrix(data=y_pred1, reference=brca.normal.test.labels, positive="Malignant")
 ```
-
 ```{r}
 # Extract SVM coefficients and SVs
 SVM_coefs <- t(regressor_svm$coefs) %*% regressor_svm$SV
 
 # Convert SVM coefficients to a data frame for easier plotting
 coefs_df <- data.frame(factors = colnames(SVM_coefs), importance = t(SVM_coefs))
-
+coefs_df$importance <- abs(coefs_df$importance)
 # Sort the factors by their importance
-coefs_df <- coefs_df[order(coefs_df$importance, decreasing = TRUE), ]
+top_inds <- order(coefs_df$importance)
+coefs_df <- coefs_df[top_inds, ]
 
 # Create a bar plot of factors' importance with colors and rotated labels
 barplot(coefs_df$importance, names.arg = coefs_df$factors, 
-        main = "SVM Factors Importance", ylab = "Importance",
+        main = "SVM Factors Importance", ylab = "Importance (abs)",
         col =  "purple", las = 2, cex.names = 0.55)
-
 ```
 
-trying svm on the reduced data:
+Trying the SVM on the reduced data:
 ```{r}
-
+set.seed(23)
 
 # Subset training set with index
 train_sample <- sample(569, 456)
@@ -478,17 +470,8 @@ regressor_svm <- svm(formula = brca.x.reduce.training.labels ~ .,
 # Make predictions on the test set
 y_pred1 <- predict(regressor_svm, newdata = brca.x.reduce.test)
 
-
-
-# Calculate and print SVM accuracy
-accuracy <- sum(y_pred1 == brca.x.reduce.test.labels) / length(brca.x.reduce.test.labels)
-print(paste('accuracy:', accuracy))
-
-# Create a contingency table
-CrossTable(brca.x.reduce.test.labels, y_pred1, prop.chisq = FALSE, prop.c = FALSE, 
-           prop.r = FALSE, dnn = c('actual type', 'predicted type'))
-
-
+# Confusion matrix 
+confusionMatrix(data=y_pred1, reference=brca.x.reduce.test.labels, positive="Malignant")
 ```
 
 ```{r}
@@ -498,25 +481,29 @@ SVM_coefs <- t(regressor_svm$coefs) %*% regressor_svm$SV
 # Convert SVM coefficients to a data frame for easier plotting
 coefs_df <- data.frame(factors = colnames(SVM_coefs), importance = t(SVM_coefs))
 
+coefs_df$importance <- abs(coefs_df$importance)
 # Sort the factors by their importance
-coefs_df <- coefs_df[order(coefs_df$importance, decreasing = TRUE), ]
+top_inds <- order(coefs_df$importance)
+coefs_df <- coefs_df[top_inds, ]
+
+
+
 # Define colors for the bar plot
 
 # Create a bar plot of factors' importance with colors and rotated labels
 barplot(coefs_df$importance, names.arg = coefs_df$factors, 
-        main = "SVM Factors Importance", ylab = "Importance",
+        main = "SVM Factors Importance", ylab = "Importance (abs)",
         col = "purple", las = 2, cex.names = 0.55)
 
-
 ```
+Like in the KNN, the dimensionality reduction improved the results just a little.
+Compered to the KNN, SVM gave us better results, and we also got feature importance ranking:
+In both raw data and reduced data we can see that the most important features for the prediction are the shape features (radius and area), the concave points, and concavity.
+
 
 #Random Forest Algorithm
 
 First we apply the algorithm on the data set without the feature reduction. 
-
-
-library(randomForest)
-```
 ```{r}
 set.seed(123)
 
@@ -574,7 +561,7 @@ importance_df <- importance_df[order(importance_df$Importance, decreasing = TRUE
 
 # Plot feature importance
 importance_plot <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_bar(stat = "identity", fill = "purple") +
   labs(x = "Feature", y = "Importance") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -648,7 +635,7 @@ importance_df_reduce <- importance_df_reduce[order(importance_df_reduce$Importan
 
 # Plot feature importance for brca.reduce
 importance_plot_reduce <- ggplot(importance_df_reduce, aes(x = reorder(Feature, Importance), y = Importance)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_bar(stat = "identity", fill = "purple") +
   labs(x = "Feature", y = "Importance") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -673,9 +660,6 @@ performance
 We can see that the accuracy of the model that were trained on the data set after feature selection and PCA were higher. 
 
 #XGBOOST
-```{r}
-library(xgboost)
-```
 
 We now apply xg boost algorithm on the two data sets.
 ```{r}
@@ -718,9 +702,7 @@ cat("AUC-ROC:", auc_roc, "\n")
 
 ```
 we can see that logloss started to converge after 158 rounds. 
-```{r}
-library(pROC)
-```
+
 Feature importance for the normal data model 
 ```{r}
 # Get feature importance matrix
@@ -734,7 +716,7 @@ importance_df <- importance_df[order(importance_df$Importance, decreasing = TRUE
 
 # Plot feature importance
 importance_plot <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_bar(stat = "identity", fill = "purple") +
   labs(x = "Feature", y = "Importance") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -800,7 +782,7 @@ importance_df <- importance_df[order(importance_df$Importance, decreasing = TRUE
 
 # Plot feature importance
 importance_plot <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_bar(stat = "identity", fill = "purple") +
   labs(x = "Feature", y = "Importance") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -813,7 +795,7 @@ importance_plot <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y
 
 print(importance_plot)
 ```
-We can see that in both of the model the most significat feature for classification is the area (shape?) and the concave. 
+We can see that in both of the model the most significant feature for classification is the area (shape?) and the concave. 
 ```{r}
 # Compare the accuracies
 performance_xgb <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
