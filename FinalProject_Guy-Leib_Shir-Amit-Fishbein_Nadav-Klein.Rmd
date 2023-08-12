@@ -1,7 +1,10 @@
 ---
 title: "Breast Cancer Biopsy Classification Project"
-subtitle:  "Guy Leib (316311190), Shir Amit Fishbein (207640228), Nadav Klein (318865698)"
+subtitle: Guy Leib (316311190), Shir Amit Fishbein (207640228), Nadav Klein (318865698)
 authors: Guy Leib, Shir Amit Fishbein, Nadav Klein
+output:
+  pdf_document: default
+  word_document: default
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -26,9 +29,11 @@ library(pROC)
 ```
 <Add here Opening paragraph>
 
+In this report we explored a breast cancer dataset. This dataset contains data that was extracted from pictures of nuclei in breast mass, and 10 different features were taken: size, texture, etc. Since every picture contains many nuclei, each feature has 3 values- mean, worst and standard error, making total of 30 features. In this report we will go through data processing, feature selection and machine learning tools.Due to limitation of the number of pages, we only include here our final decisions of the options we used normalization method, ML algorithms choices etc.
+
 # The Data
 The Data were taken from Kaggle:
-Biopsy features for classification of 569 malignant (cancer) and benign (not cancer) breast masses.
+Biopsy features for classification of 569 malignant and benign breast masses.
 Features were computationally extracted from digital images of fine needle aspirate biopsy slides.
 ## columns description
 In each observation, 10 attributes were measured for *every cell* in the biopsy (see the list below).
@@ -50,12 +55,15 @@ fractal_dimension: Nucleus fractal dimension ("coastline approximation" - 1).
 
 # Get started
 ## Upload and initial cleaning of the data
+
+<<<<<<< ADD STRUCTURE OF THE DATA>>>>>>>>
 We are first changing the names of the columns and the labels from 'M' and 'B' to 'Malignant' and 'Benign'.
 We first uploaded the data and changed the names of some of the columns, we also removed whitespaces and removed unnecessary columns.
 The final columns names are:
 ```{r load, message=FALSE, warning=FALSE, echo=FALSE}
-brca <-read.csv("data//brca.csv")
+brca <-read.csv("C://Users//leibguy//Desktop//data//brca.csv")
 ```
+
 ```{r cleaning}
 # remove the prefix "x." from column names
 colnames(brca) <- gsub("^x\\.", "", colnames(brca))
@@ -304,7 +312,7 @@ grid.arrange(p2, p1, widths=c(0.55, 0.45), ncol=2)
 
 ### supplementary Plots:
 correlation between triplets of "mean", "se" and "worst".
-```{r corr triplets plot}
+```{r corr triplets plot, echo=FALSE ,include=FALSE}
 for (prefix in measures) {
   # Find column names that start with the current prefix
   prefix.mean <- paste0(prefix, "_mean")
@@ -502,9 +510,10 @@ In both raw data and reduced data we can see that the most important features fo
 
 
 #Random Forest Algorithm
-
+We applied the Random Forest algorithm on the two data sets. 
+We did a grid search to find the best Number of trees (50/100/150) and tree depth (5/10/15)
 First we apply the algorithm on the data set without the feature reduction. 
-```{r}
+```{r, echo=FALSE}
 set.seed(123)
 
 # Take 80 percent for training and shuffle the data.
@@ -528,7 +537,7 @@ test_target_normal <- test_data[, 1]
 
 ```
 
-```{r}
+```{r, echo=FALSE}
 set.seed(123)
 
 # Train the random forest models with different parameters
@@ -551,9 +560,9 @@ for (n in num_trees) {
 best_result <- results[[which.max(sapply(results, function(x) x$accuracy))]]
 best_model_normal <- best_result$model
 best_predictions <- best_result$predictions
-
 ```
-```{r}
+From all the trained trees we choose the one with the highest accuracy and plotted the Gini Importance score for each feature. 
+```{r, echo=FALSE}
 # Get feature importance data using gini importance
 importance <- importance(best_model_normal, type=2)
 importance_df <- data.frame(Feature = row.names(importance), Importance = importance[, 1])
@@ -576,8 +585,8 @@ plot(importance_plot)
 
 ```
 
-After that we apply the algorithm on the data set after the feature reduction. 
-```{r}
+After that we did the same process on the reduced data. 
+```{r, echo=FALSE}
 set.seed(123)
 
 # Take 80 percent for training and shuffle the data.
@@ -598,10 +607,9 @@ test_features_reduce <- test_data[, -1]
 
 # Keep just the first column as the test target.
 test_target_reduce <- test_data[, 1]
-
-
 ```
-```{r}
+
+```{r, echo=FALSE}
 set.seed(123)
 
 # Train the random forest models with different parameters for brca.reduce
@@ -624,10 +632,9 @@ for (n in num_trees_reduce) {
 best_result_reduce <- results_reduce[[which.max(sapply(results_reduce, function(x) x$accuracy))]]
 best_model_reduce <- best_result_reduce$model
 best_predictions_reduce <- best_result_reduce$predictions
-
-
 ```
-```{r}
+ The following plot represent the Gini Importance Score for each feature on the reduced data set. 
+```{r, echo=FALSE}
 # Get feature importance data using gini importance for brca.reduce
 importance_reduce <- importance(best_model_reduce, type=2)
 importance_df_reduce <- data.frame(Feature = row.names(importance_reduce), Importance = importance_reduce[, 1])
@@ -648,21 +655,24 @@ importance_plot_reduce <- ggplot(importance_df_reduce, aes(x = reorder(Feature, 
 
 plot(importance_plot_reduce)
 ```
-Now we comapre the accuracy of the 2 models that were build on two different data sets. 
+We can see that after the dimensionality reduction + Feature selection we were able to find a feature that contribute to the classification much better than in the original data set. 
+<ADD EXAMPLES>
+
+Now we comapre the accuracy of the 2 models that were built on two different data sets. 
 ```{r}
 # Compare the accuracies
 performance <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
                           Accuracy = c(accuracy_normal, accuracy_reduce))
-
 performance
 
 ```
 We can see that the accuracy of the model that were trained on the data set after feature selection and PCA were higher. 
 
-#XGBOOST
+<ADD MORE SCORING SUCH AS SENSTIVITY> 
 
+#XGBOOST
 We now apply xg boost algorithm on the two data sets.
-```{r}
+```{r, echo=FALSE,results='hide'}
 # Convert labels to numeric values
 train_target_numeric <- ifelse(train_target_normal == "Benign", 0, 1)
 test_target_numeric <- ifelse(test_target_normal == "Benign", 0, 1)
@@ -691,7 +701,9 @@ f1_score <- 2 * precision * recall / (precision + recall)
 # Calculate AUC-ROC
 roc <- roc(test_target_numeric, predictions)
 auc_roc <- auc(roc)
+```
 
+```{r}
 # Print performance metrics
 cat("Performance Metrics for brca.normal dataset:\n")
 cat("Accuracy:", accuracy_normal, "\n")
@@ -699,9 +711,8 @@ cat("Precision:", precision, "\n")
 cat("Recall:", recall, "\n")
 cat("F1-Score:", f1_score, "\n")
 cat("AUC-ROC:", auc_roc, "\n")
-
 ```
-we can see that logloss started to converge after 158 rounds. 
+We were able to see that logloss started to converge after 158 rounds. 
 
 Feature importance for the normal data model 
 ```{r}
@@ -730,8 +741,8 @@ importance_plot <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y
 print(importance_plot)
 
 ```
-
-```{r}
+Now we did the same process on the reduced data set. 
+```{r,echo=FALSE,results='hide'}
 
 set.seed(123)
 # Convert labels to numeric values
@@ -760,6 +771,9 @@ f1_score <- 2 * precision * recall / (precision + recall)
 roc <- roc(test_target_numeric, predictions)
 auc_roc <- auc(roc)
 
+```
+
+```{r}
 # Print performance metrics
 cat("Performance Metrics for brca.normal dataset:\n")
 cat("Accuracy:", accuracy_reduce, "\n")
@@ -767,8 +781,8 @@ cat("Precision:", precision, "\n")
 cat("Recall:", recall, "\n")
 cat("F1-Score:", f1_score, "\n")
 cat("AUC-ROC:", auc_roc, "\n")
-
 ```
+
 Feature importance for the reudced features model 
 ```{r}
 # Get feature importance matrix
@@ -805,3 +819,7 @@ performance_xgb
 
 ```
 Also here we can see that the performance of the reduces data set is better.
+
+<ADD perfomance comparison of all models> 
+
+#Summary 
