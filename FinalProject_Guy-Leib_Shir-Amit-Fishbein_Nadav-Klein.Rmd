@@ -517,7 +517,7 @@ barplot(coefs_df$importance, names.arg = coefs_df$factors,
 ```
 
 Trying the SVM on the reduced data:
-```{r}
+```{r,echo=FAlSE}
 set.seed(23)
 
 # Subset training set with index
@@ -554,9 +554,10 @@ cat("\n")
 cat("Accuracy:", accuracy_svm_r, "\n")
 cat("Sensitivity:", sensitivity_svm_r, "\n")
 
+
 ```
 
-```{r}
+```{r,echo=FALSE}
 # Extract SVM coefficients and SVs
 SVM_coefs <- t(regressor_svm$coefs) %*% regressor_svm$SV
 
