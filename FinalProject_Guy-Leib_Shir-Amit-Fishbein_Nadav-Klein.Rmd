@@ -5,6 +5,7 @@ authors: Guy Leib, Shir Amit Fishbein, Nadav Klein
 output:
   word_document: default
   pdf_document: default
+always_allow_html: true
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -566,13 +567,18 @@ num_trees <- c(50, 100, 150)  # Different numbers of trees
 max_depth <- c(5, 10, 15)  # Different depths
 results <- list()
 
+
 for (n in num_trees) {
   for (d in max_depth) {
     model <- randomForest(train_features_normal, train_target_normal, ntree = n, maxdepth = d)
     predictions <- predict(model, test_features_normal)
-    accuracy_normal <- sum(predictions == test_target_normal) / length(test_target_normal)
+    accuracy_normal_rf <- sum(predictions == test_target_normal) / length(test_target_normal)
     
-    result <- list(ntrees = n, maxdepth = d, model = model, predictions = predictions, accuracy = accuracy_normal)
+    # Calculate confusion matrix
+    confusion <- confusionMatrix(predictions, test_target_normal)
+    sensitivity_normal_rf <- confusion$byClass["Sensitivity"]
+
+    result <- list(ntrees = n, maxdepth = d, model = model, predictions = predictions, accuracy = accuracy_normal_rf, sensitivity = sensitivity_normal_rf)
     results <- c(results, list(result))
   }
 }
@@ -581,6 +587,8 @@ for (n in num_trees) {
 best_result <- results[[which.max(sapply(results, function(x) x$accuracy))]]
 best_model_normal <- best_result$model
 best_predictions <- best_result$predictions
+
+best_sensitivity_normal_rf <- best_result$sensitivity
 ```
 From all the trained trees we choose the one with the highest accuracy and plotted the Gini Importance score for each feature. 
 ```{r, echo=FALSE}
@@ -660,9 +668,12 @@ for (n in num_trees_reduce) {
   for (d in max_depth_reduce) {
     model_reduce <- randomForest(train_features_reduce, train_target_reduce, ntree = n, maxdepth = d)
     predictions_reduce <- predict(model_reduce, test_features_reduce)
-    accuracy_reduce <- sum(predictions_reduce == test_target_reduce) / length(test_target_reduce)
+    accuracy_reduce_rf <- sum(predictions_reduce == test_target_reduce) / length(test_target_reduce)
     
-    result_reduce <- list(ntrees = n, maxdepth = d, model = model_reduce, predictions = predictions_reduce, accuracy = accuracy_reduce)
+    confusion <- confusionMatrix(predictions_reduce, test_target_reduce)
+    sensitivity_reduce_rf <- confusion$byClass["Sensitivity"]
+    
+    result_reduce <- list(ntrees = n, maxdepth = d, model = model_reduce, predictions = predictions_reduce, accuracy = accuracy_reduce ,sensitivity = sensitivity_reduce_rf)
     results_reduce <- c(results_reduce, list(result_reduce))
   }
 }
@@ -671,6 +682,8 @@ for (n in num_trees_reduce) {
 best_result_reduce <- results_reduce[[which.max(sapply(results_reduce, function(x) x$accuracy))]]
 best_model_reduce <- best_result_reduce$model
 best_predictions_reduce <- best_result_reduce$predictions
+
+best_sensitivity_reduce_rf <- best_result_reduce$sensitivity
 ```
  The following plot represent the Gini Importance Score for each feature on the reduced data set. 
 ```{r, echo=FALSE}
@@ -701,7 +714,7 @@ Now we comapre the accuracy of the 2 models that were built on two different dat
 ```{r}
 # Compare the accuracies
 performance <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
-                          Accuracy = c(accuracy_normal, accuracy_reduce))
+                          Accuracy = c(accuracy_normal_rf, accuracy_reduce_rf))
 performance
 
 ```
@@ -733,6 +746,7 @@ precision <- sum(predicted_labels == 1 & test_target_numeric == 1) / sum(predict
 
 # Calculate recall
 recall <- sum(predicted_labels == 1 & test_target_numeric == 1) / sum(test_target_numeric == 1)
+sensitivity_xg_normal <- recall 
 
 # Calculate F1-score
 f1_score <- 2 * precision * recall / (precision + recall)
@@ -740,24 +754,6 @@ f1_score <- 2 * precision * recall / (precision + recall)
 # Calculate AUC-ROC
 roc <- roc(test_target_numeric, predictions)
 auc_roc <- auc(roc)
-```
-
-For example here we show a specific decision tree that was made during the XGBOOST algorithm. 
-```{r}
-xgb.plot.tree(model = xgb_model_reduce, trees = 2, show_node_id = TRUE)
-```
-It's essential to note that the tree being shown here is only one of many in the ensemble. The final prediction is a combined result of all the trees, and the one being visualized may not fully represent the complexity and behavior of the overall model.
-
-Each tree in XGBOOST have different emphasis in classifying the data. We can see in this tree that the features shape_pc1 and texture_pc1 which was shown before as important for the classification, is used multiple time in different branches with different thresholds. This shows its important in classifying the data and signifying that it might have a non-linear relationship with the target variable.
-Also we can see that concave_pts_pc  appears as the first split, meaning that it has the highest importance in distinguishing between the classes.
-
-```{r, echo=FALSE}
-# Extract the details of the first tree into a data frame
-tree_details <- xgb.model.dt.tree(model = xgb_model_reduce, trees = 2)
-
-# Save the data frame to a CSV file
-write.csv(tree_details, file = "tree_details2.csv")
-
 ```
 
 ```{r}
@@ -812,60 +808,37 @@ xgb_model_reduce <- xgboost(data = as.matrix(train_features_reduce), label = tra
 # Make predictions on test set
 predictions_reduce <- predict(xgb_model_reduce, as.matrix(test_features_reduce))
 
+# Convert predictions to class labels
+predicted_labels_reduce <- ifelse(predictions_reduce >= 0.5, 1, 0) # Updated variable name
+
 # Calculate accuracy
-accuracy_reduce <- sum(round(predictions_reduce) == test_target_numeric) / length(test_target_numeric)
+accuracy_reduce <- sum(predicted_labels_reduce == test_target_numeric) / length(test_target_numeric)
 
 # Calculate precision
-precision <- sum(predicted_labels == 1 & test_target_numeric == 1) / sum(predicted_labels == 1)
+precision <- sum(predicted_labels_reduce == 1 & test_target_numeric == 1) / sum(predicted_labels_reduce == 1)
 
 # Calculate recall
-recall <- sum(predicted_labels == 1 & test_target_numeric == 1) / sum(test_target_numeric == 1)
+recall <- sum(predicted_labels_reduce == 1 & test_target_numeric == 1) / sum(test_target_numeric == 1)
+sensitivity_xg_reduce <- recall
 
 # Calculate F1-score
 f1_score <- 2 * precision * recall / (precision + recall)
 
 # Calculate AUC-ROC
-roc <- roc(test_target_numeric, predictions)
+roc <- roc(test_target_numeric, predictions_reduce) # Updated variable name
 auc_roc <- auc(roc)
 
+
 ```
+
+For example here we show a specific decision tree that was made during the XGBOOST algorithm. 
 ```{r}
-roc_obj <- roc(test_target_numeric, predictions)
-plot(roc_obj)
-
+xgb.plot.tree(model = xgb_model_reduce, trees = 2, show_node_id = TRUE)
 ```
-```{r}
-# Select two features for visualization
-feature1 <- 1
-feature2 <- 2
+It's essential to note that the tree being shown here is only one of many in the ensemble. The final prediction is a combined result of all the trees, and the one being visualized may not fully represent the complexity and behavior of the overall model.
 
-# Create a grid of values
-grid <- expand.grid(x1 = seq(min(train_features_reduce[, feature1]), max(train_features_reduce[, feature1]), length.out = 100),
-                    x2 = seq(min(train_features_reduce[, feature2]), max(train_features_reduce[, feature2]), length.out = 100))
-
-# Create a copy of the grid with proper names for prediction
-grid_for_prediction <- grid
-colnames(grid_for_prediction) <- colnames(train_features_reduce)[c(feature1, feature2)]
-
-# Add the remaining features with mean values for prediction
-for (i in setdiff(1:ncol(train_features_reduce), c(feature1, feature2))) {
-  grid_for_prediction[, colnames(train_features_reduce)[i]] <- mean(train_features_reduce[, i])
-}
-
-# Predict the class labels for the grid
-grid$prediction <- predict(xgb_model_reduce, as.matrix(grid_for_prediction))
-
-# Plot the decision surface
-ggplot(grid, aes(x = x1, y = x2, fill = prediction)) +
-  geom_tile() +
-  scale_fill_gradient(low = "blue", high = "red") +
-  labs(x = colnames(train_features_reduce)[feature1], y = colnames(train_features_reduce)[feature2], fill = "Prediction")
-
-
-
-
-```
-
+Each tree in XGBOOST have different emphasis in classifying the data. We can see in this tree that the features shape_pc1 and texture_pc1 which was shown before as important for the classification, is used multiple time in different branches with different thresholds. This shows its important in classifying the data and signifying that it might have a non-linear relationship with the target variable.
+Also we can see that concave_pts_pc  appears as the first split, meaning that it has the highest importance in distinguishing between the classes.
 
 ```{r}
 # Print performance metrics
@@ -916,11 +889,11 @@ Also here we can see that the performance of the reduces data set is better.
 <ADD perfomance comparison of all models> 
 ```{r}
 # Compare the accuracies
-performance_ <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
-                              KNN = c(1,1),
-                              SVM = c(1,1),
-                              Random_Forest = c(0.9473684,0.9736842),
-                              XGBOOST = c(accuracy_normal, accuracy_reduce))
+performance_ <- data.frame(Dataset = c("brca.normal_accuracy", "brca.reduce_accuracy","brca.normal_sensitivity", "brca.reduce_sensitivity"),
+                              KNN = c(1,1,2,1),
+                              SVM = c(1,1,2,2),
+                              Random_Forest = c(accuracy_normal_rf, accuracy_reduce_rf ,best_sensitivity_normal_rf,best_sensitivity_reduce_rf),
+                              XGBOOST = c(accuracy_normal, accuracy_reduce,sensitivity_xg_normal,sensitivity_xg_reduce))
 performance_
 ```
 
