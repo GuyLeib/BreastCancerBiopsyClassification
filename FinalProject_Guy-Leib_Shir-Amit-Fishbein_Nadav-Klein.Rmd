@@ -30,8 +30,6 @@ library(pROC)
 library(party)
 library(grid)
 library(xgboost)
-install.packages("DiagrammeR")
-
 library(DiagrammeR)
 ```
 # Introduction
@@ -608,8 +606,9 @@ for (n in num_trees) {
     accuracy_normal_rf <- sum(predictions == test_target_normal) / length(test_target_normal)
     
     # Calculate confusion matrix
-    confusion <- confusionMatrix(predictions, test_target_normal)
+    confusion <- confusionMatrix(predictions, test_target_normal, positive = "Malignant")
     sensitivity_normal_rf <- confusion$byClass["Sensitivity"]
+    
 
     result <- list(ntrees = n, maxdepth = d, model = model, predictions = predictions, accuracy = accuracy_normal_rf, sensitivity = sensitivity_normal_rf)
     results <- c(results, list(result))
@@ -703,7 +702,7 @@ for (n in num_trees_reduce) {
     predictions_reduce <- predict(model_reduce, test_features_reduce)
     accuracy_reduce_rf <- sum(predictions_reduce == test_target_reduce) / length(test_target_reduce)
     
-    confusion <- confusionMatrix(predictions_reduce, test_target_reduce)
+    confusion <- confusionMatrix(predictions_reduce, test_target_reduce, positive = "Malignant")
     sensitivity_reduce_rf <- confusion$byClass["Sensitivity"]
     
     result_reduce <- list(ntrees = n, maxdepth = d, model = model_reduce, predictions = predictions_reduce, accuracy = accuracy_reduce_rf ,sensitivity = sensitivity_reduce_rf)
@@ -931,3 +930,6 @@ performance_
 ```
 
 #Summary 
+As shown in the above table, we can see that the PCA we did improved the model's performances in all algorithms.
+The algorithm with the best accuracy is the SVM but the model that has the best
+
