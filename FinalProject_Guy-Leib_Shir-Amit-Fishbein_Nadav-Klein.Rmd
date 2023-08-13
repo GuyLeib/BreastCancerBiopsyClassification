@@ -29,6 +29,10 @@ library(xgboost)
 library(pROC)
 library(party)
 library(grid)
+library(xgboost)
+install.packages("DiagrammeR")
+
+library(DiagrammeR)
 ```
 # Introduction
 The early detection of malignant tumors plays a critical role in improving the survival rates and quality of life for patients diagnosed with breast cancer. Breast cancer is among the most common types of cancer in women worldwide, making it a vital area for continuous research and development. This project focuses on applying Machine Learning (ML) algorithms to analyze breast mass features and accurately differentiate between benign and malignant tumors. By leveraging the computational power and predictive capabilities of ML, this approach offers a promising avenue towards more effective, personalized, and early-stage cancer diagnosis, potentially revolutionizing traditional diagnostic methods and contributing to the broader fight against this prevalent disease.
@@ -64,7 +68,7 @@ We are first changing the names of the columns and the labels from 'M' and 'B' t
 We first uploaded the data and changed the names of some of the columns, we also removed whitespaces and removed unnecessary columns.
 The final columns names are:
 ```{r load, message=FALSE, warning=FALSE, echo=FALSE}
-brca <-read.csv("C://Users//leibguy//Desktop//data//brca.csv")
+brca <-read.csv("data//brca.csv")
 ```
 
 ```{r cleaning, echo=FALSE}
@@ -390,7 +394,15 @@ predictions<-predict.train(object=model_knn,brca.normal.test[,2:31], type="raw")
 table(predictions)
 
 # Confusion matrix 
-confusionMatrix(predictions,brca.normal.test[,1], positive="Malignant")
+
+
+conf_matrix <- confusionMatrix(predictions,brca.normal.test[,1], positive="Malignant")
+conf_matrix
+# Extract accuracy
+accuracy_knn_n <- conf_matrix$overall["Accuracy"]
+
+# Extract sensitivity (true positive rate)
+sensitivity_knn_n <- conf_matrix$byClass["Sensitivity"]
 ```
 
 Now we will check the knn algorithm on the reduced data:
@@ -426,7 +438,13 @@ predictions<-predict.train(object=model_knn,brca.reduced.test[,2:20], type="raw"
 table(predictions)
 
 # Confusion matrix 
-confusionMatrix(predictions,brca.reduced.test[,1], positive="Malignant")
+conf_matrix<-confusionMatrix(predictions,brca.reduced.test[,1], positive="Malignant")
+conf_matrix
+# Extract accuracy
+accuracy_knn_r <- conf_matrix$overall["Accuracy"]
+
+# Extract sensitivity (true positive rate)
+sensitivity_knn_r <- conf_matrix$byClass["Sensitivity"]
 
 ```
 As we can see, the accuracy of the KNN model improved only by a bit after the dimensionality reduction.
@@ -460,7 +478,14 @@ y_pred1 <- predict(regressor_svm, newdata = brca.normal.test)
 
 
 # Confusion matrix 
-confusionMatrix(data=y_pred1, reference=brca.normal.test.labels, positive="Malignant")
+conf_matrix<-confusionMatrix(data=y_pred1, reference=brca.normal.test.labels, positive="Malignant")
+
+conf_matrix
+# Extract accuracy
+accuracy_svm_n <- conf_matrix$overall["Accuracy"]
+
+# Extract sensitivity (true positive rate)
+sensitivity_svm_n <- conf_matrix$byClass["Sensitivity"]
 ```
 ```{r}
 # Extract SVM coefficients and SVs
@@ -500,8 +525,16 @@ regressor_svm <- svm(formula = brca.x.reduce.training.labels ~ .,
 # Make predictions on the test set
 y_pred1 <- predict(regressor_svm, newdata = brca.x.reduce.test)
 
-# Confusion matrix 
-confusionMatrix(data=y_pred1, reference=brca.x.reduce.test.labels, positive="Malignant")
+# Compute confusion matrix
+conf_matrix <- confusionMatrix(data = y_pred1, reference = brca.x.reduce.test.labels, positive = "Malignant")
+
+conf_matrix
+# Extract accuracy
+accuracy_svm_r <- conf_matrix$overall["Accuracy"]
+
+# Extract sensitivity (true positive rate)
+sensitivity_svm_r <- conf_matrix$byClass["Sensitivity"]
+
 ```
 
 ```{r}
@@ -673,7 +706,7 @@ for (n in num_trees_reduce) {
     confusion <- confusionMatrix(predictions_reduce, test_target_reduce)
     sensitivity_reduce_rf <- confusion$byClass["Sensitivity"]
     
-    result_reduce <- list(ntrees = n, maxdepth = d, model = model_reduce, predictions = predictions_reduce, accuracy = accuracy_reduce ,sensitivity = sensitivity_reduce_rf)
+    result_reduce <- list(ntrees = n, maxdepth = d, model = model_reduce, predictions = predictions_reduce, accuracy = accuracy_reduce_rf ,sensitivity = sensitivity_reduce_rf)
     results_reduce <- c(results_reduce, list(result_reduce))
   }
 }
@@ -890,8 +923,8 @@ Also here we can see that the performance of the reduces data set is better.
 ```{r}
 # Compare the accuracies
 performance_ <- data.frame(Dataset = c("brca.normal_accuracy", "brca.reduce_accuracy","brca.normal_sensitivity", "brca.reduce_sensitivity"),
-                              KNN = c(1,1,2,1),
-                              SVM = c(1,1,2,2),
+                              KNN = c(accuracy_knn_n,accuracy_knn_r,sensitivity_knn_n,sensitivity_knn_r),
+                              SVM = c(accuracy_svm_n,accuracy_svm_r,sensitivity_svm_n,sensitivity_svm_r),
                               Random_Forest = c(accuracy_normal_rf, accuracy_reduce_rf ,best_sensitivity_normal_rf,best_sensitivity_reduce_rf),
                               XGBOOST = c(accuracy_normal, accuracy_reduce,sensitivity_xg_normal,sensitivity_xg_reduce))
 performance_
