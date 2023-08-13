@@ -383,28 +383,31 @@ model_knn <- train(brca.normal.training[, 2:31], brca.normal.training[, 1], meth
 # Access the optimal k value
 best_k <- model_knn$bestTune$k
 # Print the best k value
-cat("Best k is:", best_k, "\n")
+cat("Best k is:", best_k, "\n\n")
 
 # Predict the labels of the test set
 predictions<-predict.train(object=model_knn,brca.normal.test[,2:31], type="raw")
 
-# Evaluate the predictions
-table(predictions)
 
 # Confusion matrix 
 
 
 conf_matrix <- confusionMatrix(predictions,brca.normal.test[,1], positive="Malignant")
-conf_matrix
 # Extract accuracy
 accuracy_knn_n <- conf_matrix$overall["Accuracy"]
 
 # Extract sensitivity (true positive rate)
 sensitivity_knn_n <- conf_matrix$byClass["Sensitivity"]
+# Print the confusion matrix
+print(conf_matrix$table)
+cat("\n")
+# Print accuracy and sensitivity
+cat("Accuracy:", accuracy_knn_n, "\n")
+cat("Sensitivity:", sensitivity_knn_n, "\n")
 ```
 
 Now we will check the knn algorithm on the reduced data:
-```{r}
+```{r, echo=FALSE}
 set.seed(613)
 # Shuffle the data:
 shuffled_data <- brca.reduce[sample(nrow(brca.reduce)), ]
@@ -427,22 +430,26 @@ model_knn <- train(brca.reduced.training[, 2:20], brca.reduced.training[, 1], me
 # Access the optimal k value
 best_k <- model_knn$bestTune$k
 # Print the best k value
-cat("Best k is:", best_k, "\n")
+cat("Best k is:", best_k, "\n\n")
 
 # Predict the labels of the test set
 predictions<-predict.train(object=model_knn,brca.reduced.test[,2:20], type="raw")
 
-# Evaluate the predictions
-table(predictions)
 
 # Confusion matrix 
 conf_matrix<-confusionMatrix(predictions,brca.reduced.test[,1], positive="Malignant")
-conf_matrix
 # Extract accuracy
 accuracy_knn_r <- conf_matrix$overall["Accuracy"]
 
 # Extract sensitivity (true positive rate)
 sensitivity_knn_r <- conf_matrix$byClass["Sensitivity"]
+
+# Print the confusion matrix
+print(conf_matrix$table)
+cat("\n")
+# Print accuracy and sensitivity
+cat("Accuracy:", accuracy_knn_r, "\n")
+cat("Sensitivity:", sensitivity_knn_r, "\n")
 
 ```
 As we can see, the accuracy of the KNN model improved only by a bit after the dimensionality reduction.
@@ -456,7 +463,7 @@ We will perform SVM, which has the advantage of the ability to extract coefficie
 We used the default hyper parameters, since they gave us the best results. We split the data into train set
 (450 samples, 80%) and test set (119 samples, 20%)
 Trying SVM on the raw data:
-```{r}
+```{r,echo=FALSE}
 set.seed(23)
 # Subset training set with index
 train_sample <- sample(569, 456)
@@ -478,14 +485,21 @@ y_pred1 <- predict(regressor_svm, newdata = brca.normal.test)
 # Confusion matrix 
 conf_matrix<-confusionMatrix(data=y_pred1, reference=brca.normal.test.labels, positive="Malignant")
 
-conf_matrix
 # Extract accuracy
 accuracy_svm_n <- conf_matrix$overall["Accuracy"]
 
 # Extract sensitivity (true positive rate)
 sensitivity_svm_n <- conf_matrix$byClass["Sensitivity"]
+
+# Print the confusion matrix
+print(conf_matrix$table)
+cat("\n")
+# Print accuracy and sensitivity
+cat("Accuracy:", accuracy_svm_n, "\n")
+cat("Sensitivity:", sensitivity_svm_n, "\n")
+
 ```
-```{r}
+```{r,echo=FALSE}
 # Extract SVM coefficients and SVs
 SVM_coefs <- t(regressor_svm$coefs) %*% regressor_svm$SV
 
@@ -526,12 +540,19 @@ y_pred1 <- predict(regressor_svm, newdata = brca.x.reduce.test)
 # Compute confusion matrix
 conf_matrix <- confusionMatrix(data = y_pred1, reference = brca.x.reduce.test.labels, positive = "Malignant")
 
-conf_matrix
+
 # Extract accuracy
 accuracy_svm_r <- conf_matrix$overall["Accuracy"]
 
 # Extract sensitivity (true positive rate)
 sensitivity_svm_r <- conf_matrix$byClass["Sensitivity"]
+
+# Print the confusion matrix
+print(conf_matrix$table)
+cat("\n")
+# Print accuracy and sensitivity
+cat("Accuracy:", accuracy_svm_r, "\n")
+cat("Sensitivity:", sensitivity_svm_r, "\n")
 
 ```
 
