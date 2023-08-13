@@ -3,8 +3,8 @@ title: "Breast Cancer Biopsy Classification Project"
 subtitle: Guy Leib (316311190), Shir Amit Fishbein (207640228), Nadav Klein (318865698)
 authors: Guy Leib, Shir Amit Fishbein, Nadav Klein
 output:
-  pdf_document: default
   word_document: default
+  pdf_document: default
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -26,16 +26,18 @@ library(gmodels)
 library(randomForest)
 library(xgboost)
 library(pROC)
+library(party)
+library(grid)
 ```
-<Add here Opening paragraph>
-
-In this report we explored a breast cancer dataset. This dataset contains data that was extracted from pictures of nuclei in breast mass, and 10 different features were taken: size, texture, etc. Since every picture contains many nuclei, each feature has 3 values- mean, worst and standard error, making total of 30 features. In this report we will go through data processing, feature selection and machine learning tools.Due to limitation of the number of pages, we only include here our final decisions of the options we used normalization method, ML algorithms choices etc.
+# Introduction
+The early detection of malignant tumors plays a critical role in improving the survival rates and quality of life for patients diagnosed with breast cancer. Breast cancer is among the most common types of cancer in women worldwide, making it a vital area for continuous research and development. This project focuses on applying Machine Learning (ML) algorithms to analyze breast mass features and accurately differentiate between benign and malignant tumors. By leveraging the computational power and predictive capabilities of ML, this approach offers a promising avenue towards more effective, personalized, and early-stage cancer diagnosis, potentially revolutionizing traditional diagnostic methods and contributing to the broader fight against this prevalent disease.
 
 # The Data
-The Data were taken from Kaggle:
+The Data were taken from [Kaggle](https://www.kaggle.com/datasets/utkarshx27/breast-cancer-wisconsin-diagnostic-dataset):
 Biopsy features for classification of 569 malignant and benign breast masses.
 Features were computationally extracted from digital images of fine needle aspirate biopsy slides.
-## columns description
+
+## Columns description
 In each observation, 10 attributes were measured for *every cell* in the biopsy (see the list below).
 Our data contain summary of those results and each row in the data contain only the mean, the standard error and the worst case among the cells (can be the larger or the most severe, depending the feature).
 overall, the data contains 3*10 features and a label (column Y) that mention wherever the mass is malignant (M) or benign (B).
@@ -64,7 +66,7 @@ The final columns names are:
 brca <-read.csv("C://Users//leibguy//Desktop//data//brca.csv")
 ```
 
-```{r cleaning}
+```{r cleaning, echo=FALSE}
 # remove the prefix "x." from column names
 colnames(brca) <- gsub("^x\\.", "", colnames(brca))
 colnames(brca)[which(names(brca) == "y")] <- "diagnosis"
@@ -74,11 +76,16 @@ brca<-brca[,-1]
 brca <- brca %>% mutate(diagnosis = if_else(diagnosis == "B", "Benign", "Malignant"))
 brca$diagnosis <- as.factor(brca$diagnosis)
 brca.x <- brca[,!(colnames(brca) %in% c("diagnosis"))]
+
+```
+
+```{r}
 colnames(brca)
 ```
+
 ## Show values range
 Afterward, to examine our data, we want to see the ranges of the values within each column, and see if there are NAs:
-```{r examine}
+```{r examine, echo=FALSE}
 measures <- c("radius", "texture", "perimeter", "area", "smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
 cat("Range of values in the numerical columns: \n")
 for (prefix in measures) {
@@ -100,7 +107,7 @@ Above we see the ranges of the values in our data and that there are no missing 
 # Data cleaning
 ## Normalization
 Because we have different ranges and we don't want that the scale of the feature will be a factor during the study we normalized each column to values between 0 and 1 by performing Min-Max normalization.
-```{r norm}
+```{r norm, echo=FALSE,include=FALSE,results='hide'}
 minmax <- function(x) {
 return ((x - min(x)) / (max(x) - min(x)))
 }
@@ -111,7 +118,7 @@ diagnosis <- brca$diagnosis
 # Combine normalized data frame with diagnosis column
 brca.normal <- cbind(diagnosis, brca.x.normal)
 ```
-```{r show norm range}
+```{r show norm range, echo=FALSE, results='hide'}
 for (prefix in measures) {
   # Find column names that start with the current prefix
   cat("-------", prefix, "-------\n")
@@ -130,7 +137,7 @@ for (prefix in measures) {
 # Exploratory Data Analysis (EDA)
 ## Balance
 First, we want to see if the labels are balanced:
-```{r}
+```{r, echo=FALSE}
 df <- brca["diagnosis"] %>% 
   group_by(diagnosis) %>%
   count() %>% 
@@ -154,7 +161,7 @@ therefore, considering that the bias is not very large, we decided to not make c
 ## distributions differences
 We want to explore if we can see visually how the measures are related to the diagnosis,
 we created box plots to each aspect of each measure for both labels - Benign and Malignant.
-```{r mean plot}
+```{r mean plot,echo=FALSE}
 box_df <- as_tibble(brca.x.normal) %>%
   select(ends_with("_mean")) %>%
   rename_all(~ str_replace_all(., "_mean", "")) %>%
@@ -170,7 +177,7 @@ p.mean <- ggplot(box_df,
   theme(axis.text.x = element_text(size = 7, angle = 45))
 p.mean + plot_annotation(title = "Mean values distribution")
 ```
-```{r se plot}
+```{r se plot, echo=FALSE}
 box_df <- as_tibble(brca.x.normal) %>%
   select(ends_with("_se")) %>%
   rename_all(~ str_replace_all(., "_se", "")) %>%
@@ -186,7 +193,7 @@ p.mean <- ggplot(box_df,
   theme(axis.text.x = element_text(size = 7, angle = 45))
 p.mean + plot_annotation(title = "Standard error values distribution")
 ```
-```{r worst plot}
+```{r worst plot, echo=FALSE}
 box_df <- as_tibble(brca.x.normal) %>%
   select(ends_with("_worst")) %>%
   rename_all(~ str_replace_all(., "_worst", "")) %>%
@@ -205,24 +212,25 @@ p.mean + plot_annotation(title = "Worst values distribution")
 We see from the plots that the features are indeed related to the diagnosis, but that a single feature cannot predict the label alone.
 Our challenge during this work will be to combine the features in a way that will give the best prediction.
 
-
 # Feture selection and dimensionality reduction
 Because the nature of our data, having 3 aspects of every feature, there might be biases while applying ML models using all the features, where there can be duplicates in the trends between them.
 Moreover, the "worst" columns are often in correlation with the "mean" and the "se" of the same measure. [see supplement figure 1A]
 In addition, even between the different measures, we can find duplicates:
 The radius of a cell has strong correlation to it's perimeter and area [also in the supplement figure 1B].
 To present our claim, here is the correlations between all the features:
-```{r corr before pca}
+```{r corr before pca, echo=FALSE}
 corrs <- cor(brca.x.normal)
 colnames(corrs) <- gsub("_", " ", colnames(corrs))
 rownames(corrs) <- gsub("_", " ", rownames(corrs))
+```
+```{r}
 corrplot(corrs, method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05, type = 'lower', diag = FALSE)
 ```
 After the dimensionality reduction, we will see if the correlations between the features will be weaker, as expected.
 
 To overcome the issues we mentioned, we:
 1) preform PCA on all the aspects of the features "radius", "perimeter" and "area":
-```{r pca shape}
+```{r pca shape, echo=FALSE}
 mesures.shape <- c("radius", "perimeter", "area")
 measures <- c("texture","smoothness", "compactness", "concavity", "concave_pts", "symmetry", "fractal_dim")
 shape <- c()
@@ -238,7 +246,7 @@ summary(pca)
 ```
 By taking PC1 and PC2 alone (instead all the 9 features) we can explain nearly 98% of the variance.
 therefore, we will create 2 new features: "shape_pc1" and "shape_pc2" instead the previous ones.
-```{r}
+```{r,echo=FALSE}
 brca.reduce <- data.frame(brca[,c('diagnosis')])
 colnames(brca.reduce) <- c("diagnosis")
 brca.reduce$shape_pc1 <- pca$x[,1]
@@ -246,7 +254,7 @@ brca.reduce$shape_pc2 <- pca$x[,2]
 ```
 2) preform PCA on every triplet of "mean", "standard error" and "worst".
 we replace the original features with PC1 and PC2 if they can explain more than 95% of the variance.
-```{r}
+```{r, echo=FALSE}
 for (prefix in measures) {
   # Find column names that start with the current prefix
   prefix.mean <- paste0(prefix, "_mean")
@@ -271,15 +279,19 @@ for (prefix in measures) {
 brca.x.reduce <- brca.reduce[,!(colnames(brca.reduce) %in% c("diagnosis"))]
 ```
 Now we check the correlation matrix between the features in the reduced data
-```{r corr after pca}
+```{r corr after pca,echo=FALSE}
 corrs <- cor(brca.x.reduce)
 colnames(corrs) <- gsub("_", " ", colnames(corrs))
 rownames(corrs) <- gsub("_", " ", rownames(corrs))
+```
+```{r}
 corrplot(corrs, method = "square", tl.col = "black", tl.srt = 45, sig.level = 0.05, type = 'lower', diag = FALSE)
 ```
 During this analysis we will apply our methods over the raw data and the reduced version and examine if the reduced version will deliver better results.
+*Important Note:* We also did PCA on the entire data set and examined the result on this df as well. The result were not better so we didnt include all the algorithms and analysis on this df.
+
 To visually see the two data sets we plotted t-SNE on both sets, and colored the observations according to the diagnosis:
-```{r}
+```{r,echo=FALSE}
 reduce.tsne <- Rtsne(brca.x.reduce,
   pca = FALSE, perplexity = 10,
   theta = 0.0
@@ -308,7 +320,7 @@ p2 <- ggplot(full.tsne, aes(
   geom_point()  + ggtitle("Before dimantionality reduction")
 grid.arrange(p2, p1, widths=c(0.55, 0.45), ncol=2)
 ```
-
+We can see that after the feature selection + PCA there is a better seperation of the data points. 
 
 ### supplementary Plots:
 correlation between triplets of "mean", "se" and "worst".
@@ -332,12 +344,21 @@ corrplot(method = "square", tl.col = "black", tl.srt = 45,
 ```
 
 # Applying Different Machine Learning Algorithms On The Data:
+First of all we split the data to train and test, we use the same split in all of the algorithms afterwards. 
+We chose to use the following algorithms:
+• KNN
+• SVM
+• Random Forest
+• XGBOOST
+
+SVM: Chosen for its ability to find complex relationships between features and classes through optimal hyperplane separation.
+XGBoost: Selected for its strong performance in handling imbalanced datasets and capturing intricate feature interactions.
+Random Forest: Picked for its ensemble approach, effectively reducing overfitting and providing feature importance scores.
+KNN: Included for its straightforward methodology of assigning feature importance based on the characteristics of nearby data points.
 
 # KNN Algorithm
-
 First, we will check the KNN algorithm on the raw data (before performing the PCA):
-
-```{r}
+```{r,echo=FALSE}
 set.seed(613)
 # Shuffle the data:
 shuffled_data <- brca.normal[sample(nrow(brca.normal)), ]
@@ -584,6 +605,24 @@ importance_plot <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y
 plot(importance_plot)
 
 ```
+```{r, fig.width=10}
+
+# Get the data used to fit the best Random Forest model
+tree_data <- data.frame(train_features_normal, target = train_target_normal)
+
+# Fit a single conditional inference tree (ctree) using the same parameters as your best Random Forest tree
+# (you'll need to adjust this to match the best tree's parameters)
+ctree_model <- ctree(target ~ ., data = tree_data, controls = ctree_control(maxdepth = best_result$maxdepth))
+
+# Plot the tree with specific spacing parameters
+plot(ctree_model, 
+     terminal_panel = node_terminal(ctree_model, 
+                                    abbreviate = TRUE, 
+                                    digits = 2, 
+                                    fill = "lightgray"),
+     tnex = 1) # You can adjust this parameter to control the spacing between nodes
+
+```
 
 After that we did the same process on the reduced data. 
 ```{r, echo=FALSE}
@@ -703,6 +742,24 @@ roc <- roc(test_target_numeric, predictions)
 auc_roc <- auc(roc)
 ```
 
+For example here we show a specific decision tree that was made during the XGBOOST algorithm. 
+```{r}
+xgb.plot.tree(model = xgb_model_reduce, trees = 2, show_node_id = TRUE)
+```
+It's essential to note that the tree being shown here is only one of many in the ensemble. The final prediction is a combined result of all the trees, and the one being visualized may not fully represent the complexity and behavior of the overall model.
+
+Each tree in XGBOOST have different emphasis in classifying the data. We can see in this tree that the features shape_pc1 and texture_pc1 which was shown before as important for the classification, is used multiple time in different branches with different thresholds. This shows its important in classifying the data and signifying that it might have a non-linear relationship with the target variable.
+Also we can see that concave_pts_pc  appears as the first split, meaning that it has the highest importance in distinguishing between the classes.
+
+```{r, echo=FALSE}
+# Extract the details of the first tree into a data frame
+tree_details <- xgb.model.dt.tree(model = xgb_model_reduce, trees = 2)
+
+# Save the data frame to a CSV file
+write.csv(tree_details, file = "tree_details2.csv")
+
+```
+
 ```{r}
 # Print performance metrics
 cat("Performance Metrics for brca.normal dataset:\n")
@@ -772,6 +829,43 @@ roc <- roc(test_target_numeric, predictions)
 auc_roc <- auc(roc)
 
 ```
+```{r}
+roc_obj <- roc(test_target_numeric, predictions)
+plot(roc_obj)
+
+```
+```{r}
+# Select two features for visualization
+feature1 <- 1
+feature2 <- 2
+
+# Create a grid of values
+grid <- expand.grid(x1 = seq(min(train_features_reduce[, feature1]), max(train_features_reduce[, feature1]), length.out = 100),
+                    x2 = seq(min(train_features_reduce[, feature2]), max(train_features_reduce[, feature2]), length.out = 100))
+
+# Create a copy of the grid with proper names for prediction
+grid_for_prediction <- grid
+colnames(grid_for_prediction) <- colnames(train_features_reduce)[c(feature1, feature2)]
+
+# Add the remaining features with mean values for prediction
+for (i in setdiff(1:ncol(train_features_reduce), c(feature1, feature2))) {
+  grid_for_prediction[, colnames(train_features_reduce)[i]] <- mean(train_features_reduce[, i])
+}
+
+# Predict the class labels for the grid
+grid$prediction <- predict(xgb_model_reduce, as.matrix(grid_for_prediction))
+
+# Plot the decision surface
+ggplot(grid, aes(x = x1, y = x2, fill = prediction)) +
+  geom_tile() +
+  scale_fill_gradient(low = "blue", high = "red") +
+  labs(x = colnames(train_features_reduce)[feature1], y = colnames(train_features_reduce)[feature2], fill = "Prediction")
+
+
+
+
+```
+
 
 ```{r}
 # Print performance metrics
@@ -814,12 +908,20 @@ We can see that in both of the model the most significant feature for classifica
 # Compare the accuracies
 performance_xgb <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
                               Accuracy = c(accuracy_normal, accuracy_reduce))
-
 performance_xgb
 
 ```
 Also here we can see that the performance of the reduces data set is better.
 
 <ADD perfomance comparison of all models> 
+```{r}
+# Compare the accuracies
+performance_ <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
+                              KNN = c(1,1),
+                              SVM = c(1,1),
+                              Random_Forest = c(0.9473684,0.9736842),
+                              XGBOOST = c(accuracy_normal, accuracy_reduce))
+performance_
+```
 
 #Summary 
