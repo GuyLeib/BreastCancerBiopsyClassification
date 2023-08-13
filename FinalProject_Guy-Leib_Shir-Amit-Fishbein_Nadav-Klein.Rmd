@@ -348,6 +348,23 @@ corrplot(method = "square", tl.col = "black", tl.srt = 45,
 
 # Applying Different Machine Learning Algorithms On The Data:
 First of all we split the data to train and test, we use the same split in all of the algorithms afterwards. 
+
+```{r}
+# Shuffle the data:
+shuffled_data <- brca.normal[sample(nrow(brca.normal)), ]
+shuffled_data <- brca.reduce[sample(nrow(brca.reduce)), ]
+# Create index to split based on labels  
+index <- createDataPartition(shuffled_data$diagnosis, p=0.8, list=FALSE)
+# Subset training set with index
+brca.normal.training <- shuffled_data[index,]
+# Subset test set with index
+brca.normal.test <- shuffled_data[-index,]
+# Subset training set with index
+brca.reduced.training <- shuffled_data[index,]
+# Subset test set with index
+brca.reduced.test <- shuffled_data[-index,]
+
+```
 We chose to use the following algorithms:
 • KNN
 • SVM
@@ -358,6 +375,7 @@ SVM: Chosen for its ability to find complex relationships between features and c
 XGBoost: Selected for its strong performance in handling imbalanced datasets and capturing intricate feature interactions.
 Random Forest: Picked for its ensemble approach, effectively reducing overfitting and providing feature importance scores.
 KNN: Included for its straightforward methodology of assigning feature importance based on the characteristics of nearby data points.
+
 
 # KNN Algorithm
 First, we will check the KNN algorithm on the raw data (before performing the PCA):
