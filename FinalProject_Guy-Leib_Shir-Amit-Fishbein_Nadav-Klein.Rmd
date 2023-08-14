@@ -66,7 +66,7 @@ We are first changing the names of the columns and the labels from 'M' and 'B' t
 We first uploaded the data and changed the names of some of the columns, we also removed whitespaces and removed unnecessary columns.
 The final columns names are:
 ```{r load, message=FALSE, warning=FALSE, echo=FALSE}
-brca <-read.csv("data//brca.csv")
+brca <-read.csv("C://Users//leibguy//Desktop//data//brca.csv")
 ```
 
 ```{r cleaning, echo=FALSE}
@@ -348,23 +348,6 @@ corrplot(method = "square", tl.col = "black", tl.srt = 45,
 
 # Applying Different Machine Learning Algorithms On The Data:
 First of all we split the data to train and test, we use the same split in all of the algorithms afterwards. 
-
-```{r}
-# Shuffle the data:
-shuffled_data <- brca.normal[sample(nrow(brca.normal)), ]
-shuffled_data <- brca.reduce[sample(nrow(brca.reduce)), ]
-# Create index to split based on labels  
-index <- createDataPartition(shuffled_data$diagnosis, p=0.8, list=FALSE)
-# Subset training set with index
-brca.normal.training <- shuffled_data[index,]
-# Subset test set with index
-brca.normal.test <- shuffled_data[-index,]
-# Subset training set with index
-brca.reduced.training <- shuffled_data[index,]
-# Subset test set with index
-brca.reduced.test <- shuffled_data[-index,]
-
-```
 We chose to use the following algorithms:
 • KNN
 • SVM
@@ -375,7 +358,6 @@ SVM: Chosen for its ability to find complex relationships between features and c
 XGBoost: Selected for its strong performance in handling imbalanced datasets and capturing intricate feature interactions.
 Random Forest: Picked for its ensemble approach, effectively reducing overfitting and providing feature importance scores.
 KNN: Included for its straightforward methodology of assigning feature importance based on the characteristics of nearby data points.
-
 
 # KNN Algorithm
 First, we will check the KNN algorithm on the raw data (before performing the PCA):
@@ -535,7 +517,7 @@ barplot(coefs_df$importance, names.arg = coefs_df$factors,
 ```
 
 Trying the SVM on the reduced data:
-```{r,echo=FAlSE}
+```{r,echo=FALSE}
 set.seed(23)
 
 # Subset training set with index
@@ -745,7 +727,7 @@ for (n in num_trees_reduce) {
     confusion <- confusionMatrix(predictions_reduce, test_target_reduce, positive = "Malignant")
     sensitivity_reduce_rf <- confusion$byClass["Sensitivity"]
     
-    result_reduce <- list(ntrees = n, maxdepth = d, model = model_reduce, predictions = predictions_reduce, accuracy = accuracy_reduce_rf ,sensitivity = sensitivity_reduce_rf)
+    result_reduce <- list(ntrees = n, maxdepth = d, model = model_reduce, predictions = predictions_reduce, accuracy = accuracy_reduce_rf ,sensitivity = sensitivity_reduce_rf, confusion=confusion)
     results_reduce <- c(results_reduce, list(result_reduce))
   }
 }
@@ -757,6 +739,12 @@ best_predictions_reduce <- best_result_reduce$predictions
 
 best_sensitivity_reduce_rf <- best_result_reduce$sensitivity
 ```
+## Confusion matrix 
+```{r}
+print(best_model_reduce$confusion)
+```
+
+ 
  The following plot represent the Gini Importance Score for each feature on the reduced data set. 
 ```{r, echo=FALSE}
 # Get feature importance data using gini importance for brca.reduce
@@ -780,9 +768,8 @@ importance_plot_reduce <- ggplot(importance_df_reduce, aes(x = reorder(Feature, 
 plot(importance_plot_reduce)
 ```
 We can see that after the dimensionality reduction + Feature selection we were able to find a feature that contribute to the classification much better than in the original data set. 
-<ADD EXAMPLES>
 
-Now we comapre the accuracy of the 2 models that were built on two different data sets. 
+## Accuracy comparison 
 ```{r}
 # Compare the accuracies
 performance <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
@@ -790,9 +777,17 @@ performance <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
 performance
 
 ```
-We can see that the accuracy of the model that were trained on the data set after feature selection and PCA were higher. 
 
-<ADD MORE SCORING SUCH AS SENSTIVITY> 
+## Sensitivity Comparison 
+```{r}
+# Compare the accuracies
+performance <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
+                          Accuracy = c(sensitivity_normal_rf, sensitivity_reduce_rf))
+performance
+
+```
+We can see that the accuracy of the model that were trained on the data set after feature selection and PCA were higher. The sensitivity stays the same. 
+
 
 #XGBOOST
 We now apply xg boost algorithm on the two data sets.
@@ -874,8 +869,9 @@ set.seed(123)
 train_target_numeric <- ifelse(train_target_reduce == "Benign", 0, 1)
 test_target_numeric <- ifelse(test_target_reduce == "Benign", 0, 1)
 
-# Train the XGBoost model on brca.reduce
-xgb_model_reduce <- xgboost(data = as.matrix(train_features_reduce), label = train_target_numeric, nrounds = 300, objective = "binary:logistic")
+# Train the XGBoost model on brca.reduce with the best hyperparameters
+xgb_model_reduce <- xgboost(data = as.matrix(train_features_reduce), label = train_target_numeric, nrounds = 200, objective = "binary:logistic")
+
 
 # Make predictions on test set
 predictions_reduce <- predict(xgb_model_reduce, as.matrix(test_features_reduce))
@@ -899,6 +895,105 @@ f1_score <- 2 * precision * recall / (precision + recall)
 # Calculate AUC-ROC
 roc <- roc(test_target_numeric, predictions_reduce) # Updated variable name
 auc_roc <- auc(roc)
+
+
+```
+
+
+```{r}
+# Convert target to factor and relabel levels
+train_target_factor <- as.factor(train_target_numeric)
+levels(train_target_factor) <- make.names(levels(factor(train_target_numeric)))
+
+# Load necessary libraries
+library(caret)
+
+# Define the control using a random search
+ctrl <- trainControl(method = "repeatedcv",
+                     number = 5,
+                     repeats = 3,
+                     search = "random",
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary,
+                     savePredictions = "final")
+
+# Define the parameter grid to search
+param_grid <- expand.grid(nrounds = c(100, 200,300),
+                          max_depth = c(3,5,7),
+                          eta = 0.3,
+                          gamma = c(0,0,5),
+                          colsample_bytree = c(0.5, 1),
+                          min_child_weight = 1,
+                          subsample = 1)
+
+# Train the model using the training control and parameter grid
+best_model <- train(x = as.matrix(train_features_normal),
+                    y = train_target_factor,
+                    method = "xgbTree",
+                    metric = "ROC",
+                    trControl = ctrl,
+                    tuneGrid = param_grid,
+                    verbose = FALSE)
+
+# Print the best model
+print(best_model)
+
+# You can now use the best_model object to make predictions
+predictions <- predict(best_model, newdata = as.matrix(test_features_normal), type="prob")
+predicted_labels <- ifelse(predictions[, "X1"] >= 0.5, 1, 0)
+
+# Calculate accuracy
+accuracy <- sum(predicted_labels == test_target_numeric) / length(test_target_numeric)
+cat("Accuracy:", accuracy, "\n")
+
+# Calculate sensitivity (recall)
+true_positives <- sum(predicted_labels == 1 & test_target_numeric == 1)
+actual_positives <- sum(test_target_numeric == 1)
+sensitivity <- true_positives / actual_positives
+cat("Sensitivity:", sensitivity, "\n")
+```
+```{r}
+# Convert target to factor and relabel levels
+train_target_factor <- as.factor(train_target_numeric)
+levels(train_target_factor) <- make.names(levels(factor(train_target_numeric)))
+
+# Load necessary libraries
+library(caret)
+
+# Define the control using a random search
+ctrl <- trainControl(method = "repeatedcv",
+                     number = 5,
+                     repeats = 3,
+                     search = "random",
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary,
+                     savePredictions = "final")
+
+# Define the parameter grid to search
+param_grid <- expand.grid(nrounds = c(100, 200),
+                          max_depth = c(3, 7),
+                          eta = c(0.1,0.3),
+                          gamma = c(0,0.2),
+                          colsample_bytree = c(0.5, 1),
+                          min_child_weight = c(1,3),
+                          subsample = 1)
+
+# Train the model using the training control and parameter grid
+set.seed(42)
+best_model <- train(x = as.matrix(train_features_normal),
+                    y = train_target_factor,
+                    method = "xgbTree",
+                    metric = "ROC",
+                    trControl = ctrl,
+                    tuneGrid = param_grid,
+                    verbose = FALSE)
+
+# Print the best model
+print(best_model)
+
+# You can now use the best_model object to make predictions
+predictions <- predict(best_model, newdata = as.matrix(test_features_normal), type="prob")
+predicted_labels <- ifelse(predictions[, "X1"] >= 0.5, 1, 0)
 
 
 ```
@@ -948,7 +1043,9 @@ importance_plot <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y
 
 print(importance_plot)
 ```
-We can see that in both of the model the most significant feature for classification is the area (shape?) and the concave. 
+We can see that in both of the model the most significant feature for classification is the area (shape?) and the concave.
+
+## Accuracy comparison
 ```{r}
 # Compare the accuracies
 performance_xgb <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
@@ -957,8 +1054,16 @@ performance_xgb
 
 ```
 Also here we can see that the performance of the reduces data set is better.
+## Sensitivity comparison 
 
-<ADD perfomance comparison of all models> 
+```{r}
+# Compare the accuracies
+performance_xgb <- data.frame(Dataset = c("brca.normal", "brca.reduce"),
+                              Accuracy = c(sensitivity_xg_normal, sensitivity_xg_reduce))
+performance_xgb
+
+```
+
 ```{r}
 # Compare the accuracies
 performance_ <- data.frame(Dataset = c("brca.normal_accuracy", "brca.reduce_accuracy","brca.normal_sensitivity", "brca.reduce_sensitivity"),
